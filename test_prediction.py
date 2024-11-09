@@ -5,12 +5,12 @@ logging.basicConfig(level=logging.INFO)
 import pywikibot
 from suggestbot.utilities.page import Page
 
-site = pywikibot.Site('en')
-page = Page(site, 'Barack Obama')
-print("{0} has a prediction of {1}".format(page.title(), page.get_prediction()))
+site = pywikibot.Site('ar')
+# page = Page(site, 'Barack Obama')
+# print("{0} has a prediction of {1}".format(page.title(), page.get_prediction()))
 
 page = Page(site, 'إيلون ماسك')
-print("{0} has a prediction of {1}".format(page.title(), page.get_rating()))
+print("{0} has a prediction of {1}".format(page.title(), page.get_ar_prediction()))
 
 page = Page(site, 'Clarence Darrow')
 print("{0} has a prediction of {1}".format(page.title(), page.get_rating()))

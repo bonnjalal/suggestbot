@@ -1185,14 +1185,19 @@ coedit_filter_threshold = 18
 pageview_url = "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/"
 ORES_url = "https://ores.wikimedia.org/v3/scores/"
 
+# quality article features api to get Arabic article quality predictions
+QAF_api = "https://misalignment.wmcloud.org/api/v1/quality-article-features?"
 ## User-Agent used in HTTP requests
+# http_user_agent = "SuggestBot/1.0"
+# http_from = "morten@cs.umn.edu"
 http_user_agent = "SuggestBot/1.0"
-http_from = "morten@cs.umn.edu"
+http_from = "bonnjalal@gmail.com"
 
 ## Possible assessment ratings used by Wikipedians, all lowercase, and in
 ## ascending order of quality.
 wp_ratings = {
     "en": ["stub", "start", "c", "b", "b+", "ga", "a", "fa"],
+    "ar": ["stub", "start", "c", "b", "b+", "ga", "a", "fa"],
 }
 
 ## Number of attempts to make when sending API requests or database queries

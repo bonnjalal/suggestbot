@@ -266,6 +266,42 @@ class Page(pywikibot.Page):
 
         self._prediction = prediction
     
+    def _get_QAF_pred(self):
+        '''
+        Make a request to Article Quality Feature api to get the predicted article rating.
+        '''
+        # make a URL request to config.QAF_api with the following
+        # information appended:
+        # lang + title
+
+        langcode = '{lang}'.format(lang=self.site.lang)
+            
+        url = '{qaf_api}lang={langcode}&title={title}'.format(
+            qaf_api=config.QAF_api,
+            langcode=langcode,
+            title=self.title()
+        )
+
+        rating = None
+        num_attempts = 0
+        while not rating and num_attempts < config.max_url_attempts:
+            r = requests.get(url, headers=self._headers)
+            num_attempts += 1
+            if r.status_code == 200:
+                try:
+                    response = r.json()
+                    # rating = response['scores'][langcode]['wp10']['scores'][str(self._revid)]['prediction'].lower()
+                    rating = response["class"].lower()
+                    break # ok, done
+                except ValueError:
+                    logging.warning('Unable to decode QAF response as JSON')
+                except KeyError:
+                    logging.warning("QAF response keys not as expected")
+
+            # something didn't go right, let's wait and try again
+            sleep(500)
+        return(rating)
+
     def _get_ores_pred(self):
         '''
         Make a request to ORES to get the predicted article rating.
@@ -275,18 +311,15 @@ class Page(pywikibot.Page):
         # lang + "wiki/wp10/" + revid
 
         if not hasattr(self, '_revid'):
-            print("The article has no revisions")
             self.site.loadrevisions(self)
-
         
-        print("After revisions")
-        print("revid", self._revid)
         langcode = '{lang}wiki'.format(lang=self.site.lang)
             
         # url = '{ores_url}/{langcode}/wp10/{revid}'.format(
         url = '{ores_url}{langcode}/{revid}/wp10'.format(
             ores_url=config.ORES_url,
             langcode=langcode,
+
             revid=self._revid)
 
         rating = None
@@ -316,6 +349,16 @@ class Page(pywikibot.Page):
         '''
         if not self._prediction:
             self._prediction = self._get_ores_pred()
+            
+        return(self._prediction)
+
+    def get_ar_prediction(self):
+        '''
+        Retrieve the predicted assessment rating from ORES using the
+        current revision of the article.
+        '''
+        if not self._prediction:
+            self._prediction = self._get_QAF_pred()
             
         return(self._prediction)
 
