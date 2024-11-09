@@ -43,7 +43,8 @@ import mwparserfromhell as mwp
 
 import pywikibot
 from pywikibot.pagegenerators import PreloadingGenerator
-from pywikibot.tools import itergroup
+# from pywikibot.tools import itergroup
+from pywikibot.tools.itertools import itergroup
 from pywikibot.data import api
 
 from math import log
@@ -53,7 +54,8 @@ from urllib.parse import quote
 
 from collections import namedtuple
 from mwtypes import Timestamp
-from wikiclass.extractors import enwiki
+# from wikiclass.extractors import enwiki
+from articlequality.extractors import enwiki
 
 from scipy import stats
 
@@ -245,9 +247,9 @@ class Page(pywikibot.Page):
             try:
                 tp = self.toggleTalkPage()
                 self._rating = self.get_assessment(tp.get())
-            except pywikibot.NoPage:
+            except pywikibot.exceptions.NoPageError:
                 self._rating = 'na'
-            except pywikibot.IsRedirectPage:
+            except pywikibot.exceptions.IsRedirectPageError:
                 self._rating = 'na'
             
         return(self._rating)
@@ -273,11 +275,16 @@ class Page(pywikibot.Page):
         # lang + "wiki/wp10/" + revid
 
         if not hasattr(self, '_revid'):
+            print("The article has no revisions")
             self.site.loadrevisions(self)
 
+        
+        print("After revisions")
+        print("revid", self._revid)
         langcode = '{lang}wiki'.format(lang=self.site.lang)
             
-        url = '{ores_url}{langcode}/wp10/{revid}'.format(
+        # url = '{ores_url}/{langcode}/wp10/{revid}'.format(
+        url = '{ores_url}{langcode}/{revid}/wp10'.format(
             ores_url=config.ORES_url,
             langcode=langcode,
             revid=self._revid)
@@ -290,7 +297,8 @@ class Page(pywikibot.Page):
             if r.status_code == 200:
                 try:
                     response = r.json()
-                    rating = response['scores'][langcode]['wp10']['scores'][str(self._revid)]['prediction'].lower()
+                    # rating = response['scores'][langcode]['wp10']['scores'][str(self._revid)]['prediction'].lower()
+                    rating = response[langcode]['scores'][str(self._revid)]['wp10']['score']['prediction'].lower()
                     break # ok, done
                 except ValueError:
                     logging.warning('Unable to decode ORES response as JSON')
