@@ -1,53 +1,51 @@
-Traceback (most recent call last):
-  File "bin/edit-server.py", line 33, in <module>
-    from suggestbot import config
-  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/__init__.py", line 1, in <module>
-    from suggestbot.suggestbot import SuggestBot, PageNotSavedError
-  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/suggestbot.py", line 38, in <module>
-    import pywikibot
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/__init__.py", line 34, in <module>
-    from pywikibot.bot import (
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/bot.py", line 136, in <module>
-    from pywikibot import config, daemonize, i18n, version
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/version.py", line 27, in <module>
-    from pywikibot.comms.http import fetch
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/comms/http.py", line 108, in <module
->
-    session = requests.Session()
-AttributeError: module 'requests' has no attribute 'Session'
-07:06:56 bonnjalal@localhost suggestbot ±|master ✗|→ python bin/edit-server.py 
-Traceback (most recent call last):
-  File "bin/edit-server.py", line 33, in <module>
-    from suggestbot import config
-  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/__init__.py", line 1, in <module>
-    from suggestbot.suggestbot import SuggestBot, PageNotSavedError
-  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/suggestbot.py", line 38, in <module>
-    import pywikibot
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/__init__.py", line 34, in <module>
-    from pywikibot.bot import (
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/bot.py", line 136, in <module>
-    from pywikibot import config, daemonize, i18n, version
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/version.py", line 27, in <module>
-    from pywikibot.comms.http import fetch
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/comms/http.py", line 108, in <module
->
-    session = requests.Session()
-AttributeError: module 'requests' has no attribute 'Session'
-07:06:59 bonnjalal@localhost suggestbot ±|master ✗|→ python bin/edit-server.py 
-Traceback (most recent call last):
-  File "bin/edit-server.py", line 33, in <module>
-    from suggestbot import config
-  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/__init__.py", line 1, in <module>
-    from suggestbot.suggestbot import SuggestBot, PageNotSavedError
-  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/suggestbot.py", line 38, in <module>
-    import pywikibot
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/__init__.py", line 34, in <module>
-    from pywikibot.bot import (
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/bot.py", line 136, in <mo
-    from pywikibot import config, daemonize, i18n, version
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/version.py", line 27, in 
-    from pywikibot.comms.http import fetch
-  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/comms/http.py", line 108,
->
-    session = requests.Session()
-AttributeError: module 'requests' has no attribute 'Session'
+#!/usr/env/python
+# -*- coding: utf-8 -*-
+'''
+Test the XML-RPC-based co-edit recommender.
+'''
+
+import sys
+import os
+
+# Add the parent directory to the Python path
+# Use this line only if your want to test the script directly from the current path 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import logging
+
+from suggestbot import config
+from suggestbot.profilers import EditProfiler
+
+import xmlrpc.client
+
+def main():
+    test_lang = 'en'
+    test_user = 'Nettrom'
+    test_n = 500
+
+    # Get my edits
+    profiler = EditProfiler()
+    my_edits = profiler.get_edits(test_user, test_lang, test_n)
+
+    # Collapse into a dict, then a list
+    my_edits = {item['title'] : 1 for item in my_edits}
+    my_edits = list(my_edits.keys())
+
+    print("Got {} edits back".format(len(my_edits)))
+
+    sp = xmlrpc.client.ServerProxy("http://{hostname}:{port}".format(hostname=config.coedit_hostname, port=config.coedit_hostport))
+    try:
+        recs = sp.recommend(test_user,
+                            test_lang,
+                            my_edits)
+        print("Got {} recommendations back".format(len(recs)))
+    except xmlrpc.client.Error as e:
+        logging.error('Getting edits for {0}:User:{1} failed'.format(
+            test_lang, test_user))
+        logging.error(e)
+    return()
+
+if __name__ == "__main__":
+    main()
+    
+                
