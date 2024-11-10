@@ -47,6 +47,8 @@ from pywikibot.pagegenerators import PreloadingGenerator
 from pywikibot.tools.itertools import itergroup
 from pywikibot.data import api
 
+from pywikibot import backports
+
 from math import log
 from time import sleep
 from datetime import date, timedelta
@@ -369,9 +371,9 @@ class Page(pywikibot.Page):
 
         try:
             qualfeatures = qm.get_qualfeatures(self.get())
-        except pywikibot.NoPage:
+        except pywikibot.exceptions.NoPageError:
             return()
-        except pywikibot.IsRedirectPage:
+        except pywikibot.exceptions.IsRedirectPageError:
             return()
 
         # 1: length
@@ -450,9 +452,9 @@ def RatingGenerator(pages, step=50):
             page._rating = page.get_assessment(talkpage.get())
         except KeyError:
             page._rating = 'na'
-        except pywikibot.NoPage:
+        except pywikibot.exceptions.NoPageError:
             page._rating = 'na'
-        except pywikibot.IsRedirectPage:
+        except pywikibot.exceptions.IsRedirectPageError:
             page._rating = 'na'
         yield page
 
@@ -467,10 +469,11 @@ def PageRevIdGenerator(site, pagelist, step=50):
     :param step: how many Pages to query at a time
     :type step: int
     """
-    for sublist in itergroup(pagelist, step):
+    for sublist in backports.batched(pagelist, step):
         pageids = [str(p._pageid) for p in sublist
                    if hasattr(p, "_pageid") and p._pageid > 0]
-        cache = dict((p.title(withSection=False), p) for p in sublist)
+        # cache = dict((p.title(withSection=False), p) for p in sublist)
+        cache = dict((p.title(), p) for p in sublist)
         props = "revisions|info|categoryinfo"
         rvgen = api.PropertyGenerator(props, site=site)
         rvgen.set_maximum_items(-1)  # suppress use of "rvlimit" parameter
@@ -517,71 +520,94 @@ def PageRevIdGenerator(site, pagelist, step=50):
         for page in sublist:
             yield page
         
+# Updated to use ORES v3
 def PredictionGenerator(site, pages, step=50):
     '''
-    Generate pages with quality predictions.
-
+    Generate pages with quality predictions using ORES v3.
     :param site: site of the pages we are predicting for
     :type pages: pywikibot.Site
-
     :param pages: List of pages we are predicting.
     :type pages: list of pywikibot.Page
-
     :param step: Number of pages to get predictions for at a time,
                  maximum is 50.
     :type step: int
     '''
-
-    # looks like the best way to do this is to first make one
-    # API request to update the pages with the current revision ID,
-    # then make one ORES request to get the predictions.
-
     if step > 50:
         step = 50
-
+    
     langcode = '{lang}wiki'.format(lang=site.lang)
-        
-    # example ORES URL predicting ratings for multiple revisions:
-    # https://ores.wmflabs.org/v2/scores/enwiki/wp10/?revids=703654757%7C714153013%7C713916222%7C691301429%7C704638887%7C619467163
-    # sub "%7C" with "|"
-
-    # pywikibot.tools.itergroup splits up the list of pages
-    for page_group in itergroup(pages, step):
-        revid_page_map = {} # rev id (str) -> page object
-        # we use the generator to efficiently load most recent rev id
+    
+    # ORES v3 base URL structure:
+    # https://ores.wikimedia.org/v3/scores/{wiki}/{revids}/{models}
+    
+    for page_group in backports.batched(pages, step):
+        revid_page_map = {}  # rev id (str) -> page object
+        # Load most recent revision IDs
         for page in PageRevIdGenerator(site, page_group):
-            revid_page_map[str(page.latestRevision())] = page
-
-        # make a request to score the revisions
-        url = '{ores_url}{langcode}/wp10/?revids={revids}'.format(
+            revid_page_map[str(page.latest_revision_id)] = page
+            
+        # Construct ORES v3 URL
+        revids = '|'.join([str(page.latest_revision_id) for page in page_group])
+        url = '{ores_url}v3/scores/{langcode}/{revids}/wp10'.format(
             ores_url=config.ORES_url,
             langcode=langcode,
-            revids='|'.join([str(page.latestRevision()) for page in page_group]))
-
-        logging.debug('Requesting predictions for {n} pages from ORES'.format(
+            revids=revids
+        )
+        
+        logging.debug('Requesting predictions for {n} pages from ORES v3'.format(
             n=len(revid_page_map)))
-
+        
         num_attempts = 0
         while num_attempts < config.max_url_attempts:
-            r = requests.get(url,
-                             headers={'User-Agent': config.http_user_agent,
-                                      'From': config.http_from})
+            r = requests.get(
+                url,
+                headers={
+                    'User-Agent': config.http_user_agent,
+                    'From': config.http_from
+                }
+            )
             num_attempts += 1
+            
             if r.status_code == 200:
                 try:
                     response = r.json()
-                    revid_pred_map = response['scores'][langcode]['wp10']['scores']
-                    # iterate over returned predictions and update
-                    for revid, score_data in revid_pred_map.items():
-                        revid_page_map[revid].set_prediction(score_data['prediction'].lower())
+                    # ORES v3 response structure is different
+                    scores = response.get('scores', {}).get(langcode, {})
+                    
+                    for revid, score_data in scores.items():
+                        wp10_score = score_data.get('wp10', {})
+                        if 'error' in wp10_score:
+                            logging.warning(f"Error in ORES prediction for revision {revid}: {wp10_score['error']}")
+                            continue
+                            
+                        prediction = wp10_score.get('score', {}).get('prediction')
+                        if prediction and revid in revid_page_map:
+                            revid_page_map[revid].set_prediction(prediction.lower())
                     break
+                    
                 except ValueError:
                     logging.warning("Unable to decode ORES response as JSON")
-                except KeyErrror:
-                    logging.warning("ORES response keys not as expected")
-
-            # something didn't go right, let's wait and try again
-            sleep(500)
-
+                except KeyError as e:
+                    logging.warning(f"ORES response keys not as expected: {str(e)}")
+            
+            # Wait before retrying
+            # sleep(500)
+            sleep(1)
+            
         for page in page_group:
             yield page
+
+
+def PredictionGenerator_QAF(pages, step=50):
+    '''
+    Generate pages with quality predictions using quality article features api.
+    '''
+
+    for page in pages:
+        yield page.get_ar_prediction()
+    # if step > 50:
+    #     step = 50
+    # 
+    # for page_group in backports.batched(pages, step):
+    #     for page in page_group:
+    #         yield page.get_ar_prediction()
