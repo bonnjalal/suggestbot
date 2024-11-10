@@ -1,5 +1,53 @@
 Traceback (most recent call last):
-  File "tests/test_bulk_prediction.py", line 32, in <module>
-    print("{0} last revision of {2}, and prediction of {3}".format(page.title(), page.latest_revision_id, page.get_prediction()))
-AttributeError: 'str' object has no attribute 'latest_revision_id'
-CRITICAL: Exiting due to uncaught exception AttributeError: 'str' object has no attribute 'latest_revision_id'
+  File "bin/edit-server.py", line 33, in <module>
+    from suggestbot import config
+  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/__init__.py", line 1, in <module>
+    from suggestbot.suggestbot import SuggestBot, PageNotSavedError
+  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/suggestbot.py", line 38, in <module>
+    import pywikibot
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/__init__.py", line 34, in <module>
+    from pywikibot.bot import (
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/bot.py", line 136, in <module>
+    from pywikibot import config, daemonize, i18n, version
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/version.py", line 27, in <module>
+    from pywikibot.comms.http import fetch
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/comms/http.py", line 108, in <module
+>
+    session = requests.Session()
+AttributeError: module 'requests' has no attribute 'Session'
+07:06:56 bonnjalal@localhost suggestbot ±|master ✗|→ python bin/edit-server.py 
+Traceback (most recent call last):
+  File "bin/edit-server.py", line 33, in <module>
+    from suggestbot import config
+  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/__init__.py", line 1, in <module>
+    from suggestbot.suggestbot import SuggestBot, PageNotSavedError
+  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/suggestbot.py", line 38, in <module>
+    import pywikibot
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/__init__.py", line 34, in <module>
+    from pywikibot.bot import (
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/bot.py", line 136, in <module>
+    from pywikibot import config, daemonize, i18n, version
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/version.py", line 27, in <module>
+    from pywikibot.comms.http import fetch
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/comms/http.py", line 108, in <module
+>
+    session = requests.Session()
+AttributeError: module 'requests' has no attribute 'Session'
+07:06:59 bonnjalal@localhost suggestbot ±|master ✗|→ python bin/edit-server.py 
+Traceback (most recent call last):
+  File "bin/edit-server.py", line 33, in <module>
+    from suggestbot import config
+  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/__init__.py", line 1, in <module>
+    from suggestbot.suggestbot import SuggestBot, PageNotSavedError
+  File "/home/bonnjalal/Documents/Python/suggestbot/suggestbot/suggestbot.py", line 38, in <module>
+    import pywikibot
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/__init__.py", line 34, in <module>
+    from pywikibot.bot import (
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/bot.py", line 136, in <mo
+    from pywikibot import config, daemonize, i18n, version
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/version.py", line 27, in 
+    from pywikibot.comms.http import fetch
+  File "/home/bonnjalal/.pyenv/versions/3.7.17/lib/python3.7/site-packages/pywikibot/comms/http.py", line 108,
+>
+    session = requests.Session()
+AttributeError: module 'requests' has no attribute 'Session'

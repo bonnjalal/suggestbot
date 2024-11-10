@@ -21,6 +21,13 @@ Free Software Foundation, Inc., 51 Franklin St, Fifth Floor,
 Boston, MA  02110-1301, USA.
 """
 
+import sys
+import os
+
+# Add the parent directory to the Python path
+# Use this line only if your want to test the script directly from the current path 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import logging
 
 from suggestbot import config

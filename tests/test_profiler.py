@@ -3,6 +3,12 @@
 '''
 Test the XML-RPC-based edit profiler.
 '''
+import sys
+import os
+
+# Add the parent directory to the Python path
+# Use this line only if your want to test the script directly from the current path 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import logging
 
@@ -21,7 +27,7 @@ def main():
         print("Got {} edits back".format(len(edits)))
     except xmlrpc.client.Error as e:
         logging.error('Getting edits for {0}:User:{1} failed'.format(
-            lang, user))
+            test_lang, test_user))
         logging.error(e)
     return()
 
