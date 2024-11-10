@@ -301,7 +301,7 @@ class Page(pywikibot.Page):
                     logging.warning("QAF response keys not as expected")
 
             # something didn't go right, let's wait and try again
-            sleep(500)
+            sleep(5)
         return(rating)
 
     def _get_ores_pred(self):
@@ -604,7 +604,8 @@ def PredictionGenerator_QAF(pages, step=50):
     '''
 
     for page in pages:
-        yield page.get_ar_prediction()
+        page.get_ar_prediction()
+        yield page
     # if step > 50:
     #     step = 50
     # 

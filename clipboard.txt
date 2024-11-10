@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "tests/test_bulk_prediction.py", line 32, in <module>
+    print("{0} last revision of {2}, and prediction of {3}".format(page.title(), page.latest_revision_id, page.get_prediction()))
+AttributeError: 'str' object has no attribute 'latest_revision_id'
+CRITICAL: Exiting due to uncaught exception AttributeError: 'str' object has no attribute 'latest_revision_id'

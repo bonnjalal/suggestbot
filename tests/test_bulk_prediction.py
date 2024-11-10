@@ -23,13 +23,14 @@ site = pywikibot.Site('ar')
 #             sup.Page(site, "Jack O'Callahan"),
 #             sup.Page(site, "Switchcraft")]
 
-pagelist = [sup.Page(site, 'إلون ماسك'),
+pagelist = [sup.Page(site, 'إيلون ماسك'),
             sup.Page(site, 'المغرب'),
             sup.Page(site, 'فاس'),
-            sup.Page(site, 'مرآة التيار'),
-            ]
-for page in sup.PredictionGenerator_QAF(pagelist):
-    print("{0} has a page ID of {1}, last revision of {2}, and prediction of {3}".format(page.title(), page._pageid, page.latest_revision_id, page.get_prediction()))
+            sup.Page(site, 'مرآة التيار')]
+
+for page in sup.PredictionGenerator_QAF( pagelist):
+    print("{0} last revision of {1}, and prediction of {2}".format(page.title(), page.latest_revision_id, page.get_prediction()))
+    # print("{0} has a page ID of {1}, last revision of {2}, and prediction of {3}".format(page.title(), page._pageid, page.latest_revision_id, page.get_prediction()))
 
 
 #         site = pywikibot.Site('en', 'wikipedia')
