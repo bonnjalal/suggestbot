@@ -1,6 +1,7 @@
 mwparserfromhell
 pywikibot
 requests
-wikiclass
+# wikiclass
+articlequality
 docopt
 nltk

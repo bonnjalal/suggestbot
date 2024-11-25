@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8  -*-
-'''
+"""
 Wikipedia page object with properties reflecting an article's
 current assessment rating, it's predicted assessment rating,
 and the average number of views over the past 14 days.  The
@@ -25,7 +25,7 @@ You should have received a copy of the GNU Library General Public
 License along with this library; if not, write to the
 Free Software Foundation, Inc., 51 Franklin St, Fifth Floor,
 Boston, MA  02110-1301, USA.
-'''
+"""
 
 ## Purpose of this module:
 ## Extend the Pywikibot page object with information on:
@@ -43,6 +43,7 @@ import mwparserfromhell as mwp
 
 import pywikibot
 from pywikibot.pagegenerators import PreloadingGenerator
+
 # from pywikibot.tools import itergroup
 from pywikibot.tools.itertools import itergroup
 from pywikibot.data import api
@@ -56,6 +57,7 @@ from urllib.parse import quote
 
 from collections import namedtuple
 from mwtypes import Timestamp
+
 # from wikiclass.extractors import enwiki
 from articlequality.extractors import enwiki
 
@@ -64,45 +66,44 @@ from scipy import stats
 from suggestbot import config
 import suggestbot.utilities.qualmetrics as qm
 
+
 class InvalidRating(Exception):
-    '''The given rating is not one we support.'''
+    """The given rating is not one we support."""
+
     pass
+
 
 class Page(pywikibot.Page):
     def __init__(self, site, title, *args, **kwargs):
         super(Page, self).__init__(site, title, *args, **kwargs)
 
-        self._avg_views = None # avg views per last 14 days
-        self._rating = None # current assessment rating
-        self._prediction = None # predicted rating by ORES
+        self._avg_views = None  # avg views per last 14 days
+        self._rating = None  # current assessment rating
+        self._prediction = None  # predicted rating by ORES
 
-        self._wp10_scale = {r: i for i, r
-                            in enumerate(config.wp_ratings[site.lang])}
+        self._wp10_scale = {r: i for i, r in enumerate(config.wp_ratings[site.lang])}
         self._qualdata = {}
         self._qualtasks = {}
 
-        self._headers =  {
-            'User-Agent': config.http_user_agent,
-            'From': config.http_from
-        }
+        self._headers = {"User-Agent": config.http_user_agent, "From": config.http_from}
 
     def set_views(self, views):
-        '''
+        """
         Set the number of average views.
 
         :param views: Number of average views.
         :type views: float
-        '''
+        """
         self._avg_views = views
 
     def _get_views_from_api(self, http_session=None):
-        '''
+        """
         Make a request to the Wikipedia pageview API to retrieve page views
         for the past 14 days and calculate and set `_avg_views` accordingly.
 
         :param http_session: Session to use for HTTP requests
         :type http_session: requests.session
-        '''
+        """
         # make a URL request to config.pageview_url with the following
         # information appendend:
         # languageCode + '.wikipedia/all-access/all-agents/' + uriEncodedArticle + '/daily/' +
@@ -117,15 +118,21 @@ class Page(pywikibot.Page):
 
         if not http_session:
             http_session = requests.Session()
-        
+
         today = date.today()
         start_date = today - timedelta(days=15)
         end_date = today - timedelta(days=2)
 
         # test url for Barack Obama
         # 'https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/all-agents/Barack%20Obama/daily/20160318/20160331'
-        
-        url = '{api_url}{lang}.wikipedia/all-access/all-agents/{title}/daily/{startdate}/{enddate}'.format(api_url=config.pageview_url, lang=self.site.lang, title=quote(self.title(), safe=''), startdate=start_date.strftime('%Y%m%d'), enddate=end_date.strftime('%Y%m%d'))
+
+        url = "{api_url}{lang}.wikipedia/all-access/all-agents/{title}/daily/{startdate}/{enddate}".format(
+            api_url=config.pageview_url,
+            lang=self.site.lang,
+            title=quote(self.title(), safe=""),
+            startdate=start_date.strftime("%Y%m%d"),
+            enddate=end_date.strftime("%Y%m%d"),
+        )
 
         view_list = []
         num_attempts = 0
@@ -135,14 +142,14 @@ class Page(pywikibot.Page):
             if r.status_code == 200:
                 try:
                     response = r.json()
-                    view_list = response['items']
+                    view_list = response["items"]
                 except ValueError:
-                    logging.warning('Unable to decode pageview API as JSON')
-                    continue # try again
+                    logging.warning("Unable to decode pageview API as JSON")
+                    continue  # try again
                 except KeyError:
                     logging.warning("Key 'items' not found in pageview API response")
             else:
-                logging.warning('Pageview API did not return HTTP status 200')
+                logging.warning("Pageview API did not return HTTP status 200")
 
         if view_list:
             # The views should be in chronological order starting with
@@ -151,17 +158,17 @@ class Page(pywikibot.Page):
             days = 0
             for item in view_list:
                 try:
-                    total_views += item['views']
+                    total_views += item["views"]
                     days += 1
                 except KeyError:
                     # no views for this day?
                     pass
-            self._avg_views = total_views/days
-                
-        return()
-        
+            self._avg_views = total_views / days
+
+        return ()
+
     def get_views(self, http_session=None):
-        '''
+        """
         Retrieve the average number of views for the past 14 days
         for this specific page.
 
@@ -169,22 +176,22 @@ class Page(pywikibot.Page):
         :type http_session: requests.Session
 
         :returns: This page's number of average views
-        '''
+        """
         if self._avg_views is None:
             self._get_views_from_api(http_session=http_session)
 
-        return(self._avg_views)
+        return self._avg_views
 
     def set_rating(self, new_rating):
-        '''
+        """
         Set this article's current assessment rating.
 
         :param new_rating: The new assessment rating
-        '''
+        """
         self._rating = new_rating
 
     def get_assessment(self, wikitext):
-        '''
+        """
         Parse the given wikitext and extract any assessment rating.
 
         If multiple ratings are present, the highest rating is used.
@@ -198,90 +205,88 @@ class Page(pywikibot.Page):
 
         :param wikitext: wikitext of a talk page
         :returns: assessment rating
-        '''
+        """
 
-        rating = 'na'
-        ratings = [] # numeric ratings
+        rating = "na"
+        ratings = []  # numeric ratings
 
         # Helper objects, the wikiclass extractor wants `mwxml.Page' objects
-        Revision = namedtuple("Revisions", ['id', 'timestamp', 'sha1', 'text'])
+        Revision = namedtuple("Revisions", ["id", "timestamp", "sha1", "text"])
+
         class MWXMLPage:
             def __init__(self, title, namespace, revisions):
                 self.title = title
                 self.namespace = namespace
                 self.revisions = revisions
-                
+
             def __iter__(self):
                 return iter(self.revisions)
-        
+
         # NOTE: The assessments are at the top of the page,
         # and the templates are rather small,
         # so if the page is > 8k, truncate.
-        if len(wikitext) > 8*1024:
-            wikitext = wikitext[:8*1024]
+        if len(wikitext) > 8 * 1024:
+            wikitext = wikitext[: 8 * 1024]
 
         # Extract rating observations from a dummy `mwxml.Page` object
         # where the only revision is our wikitext
-        observations = enwiki.extract(MWXMLPage(self.title(),
-                                                1,
-                                                [Revision(1, Timestamp(1),
-                                                          "aaa", wikitext)]))
+        observations = enwiki.extract(
+            MWXMLPage(self.title(), 1, [Revision(1, Timestamp(1), "aaa", wikitext)])
+        )
         for observation in observations:
             try:
-                ratings.append(self._wp10_scale[observation['wp10']])
+                ratings.append(self._wp10_scale[observation["wp10"]])
             except KeyError:
-                pass # invalid rating
+                pass  # invalid rating
 
         if ratings:
             # set rating to the highest rating, but the str, not ints
             rating = {v: k for k, v in self._wp10_scale.items()}[max(ratings)]
-        return(rating)
-        
+        return rating
+
     def get_rating(self):
-        '''
+        """
         Retrieve the current article assessment rating as found on the
         article's talk page.
 
         :returns: The article's assessment rating, 'na' if it is not assessed.
-        '''
+        """
 
         if not self._rating:
             try:
                 tp = self.toggleTalkPage()
                 self._rating = self.get_assessment(tp.get())
             except pywikibot.exceptions.NoPageError:
-                self._rating = 'na'
+                self._rating = "na"
             except pywikibot.exceptions.IsRedirectPageError:
-                self._rating = 'na'
-            
-        return(self._rating)
+                self._rating = "na"
+
+        return self._rating
 
     def set_prediction(self, prediction):
-        '''
+        """
         Set the article's predicted quality rating.
 
         :param prediction: Predicted quality rating.
         :type prediction: str
-        '''
+        """
         if not prediction in self._wp10_scale:
             raise InvalidRating
 
         self._prediction = prediction
-    
+
     def _get_QAF_pred(self):
-        '''
+        """
         Make a request to Article Quality Feature api to get the predicted article rating.
-        '''
+        """
         # make a URL request to config.QAF_api with the following
         # information appended:
         # lang + title
 
-        langcode = '{lang}'.format(lang=self.site.lang)
-            
-        url = '{qaf_api}lang={langcode}&title={title}'.format(
-            qaf_api=config.QAF_api,
-            langcode=langcode,
-            title=self.title()
+        langcode = "{lang}".format(lang=self.site.lang)
+
+        url = "{qaf_api}lang={langcode}&title={title}".format(
+            qaf_api=config.QAF_api, langcode=langcode, title=self.title()
         )
 
         rating = None
@@ -294,35 +299,33 @@ class Page(pywikibot.Page):
                     response = r.json()
                     # rating = response['scores'][langcode]['wp10']['scores'][str(self._revid)]['prediction'].lower()
                     rating = response["class"].lower()
-                    break # ok, done
+                    break  # ok, done
                 except ValueError:
-                    logging.warning('Unable to decode QAF response as JSON')
+                    logging.warning("Unable to decode QAF response as JSON")
                 except KeyError:
                     logging.warning("QAF response keys not as expected")
 
             # something didn't go right, let's wait and try again
             sleep(5)
-        return(rating)
+        return rating
 
     def _get_ores_pred(self):
-        '''
+        """
         Make a request to ORES to get the predicted article rating.
-        '''
+        """
         # make a URL request to config.ORES_url with the following
         # information appended:
         # lang + "wiki/wp10/" + revid
 
-        if not hasattr(self, '_revid'):
+        if not hasattr(self, "_revid"):
             self.site.loadrevisions(self)
-        
-        langcode = '{lang}wiki'.format(lang=self.site.lang)
-            
-        # url = '{ores_url}/{langcode}/wp10/{revid}'.format(
-        url = '{ores_url}{langcode}/{revid}/wp10'.format(
-            ores_url=config.ORES_url,
-            langcode=langcode,
 
-            revid=self._revid)
+        langcode = "{lang}wiki".format(lang=self.site.lang)
+
+        # url = '{ores_url}/{langcode}/wp10/{revid}'.format(
+        url = "{ores_url}{langcode}/{revid}/wp10".format(
+            ores_url=config.ORES_url, langcode=langcode, revid=self._revid
+        )
 
         rating = None
         num_attempts = 0
@@ -333,116 +336,124 @@ class Page(pywikibot.Page):
                 try:
                     response = r.json()
                     # rating = response['scores'][langcode]['wp10']['scores'][str(self._revid)]['prediction'].lower()
-                    rating = response[langcode]['scores'][str(self._revid)]['wp10']['score']['prediction'].lower()
-                    break # ok, done
+                    rating = response[langcode]["scores"][str(self._revid)]["wp10"][
+                        "score"
+                    ]["prediction"].lower()
+                    break  # ok, done
                 except ValueError:
-                    logging.warning('Unable to decode ORES response as JSON')
+                    logging.warning("Unable to decode ORES response as JSON")
                 except KeyError:
                     logging.warning("ORES response keys not as expected")
 
             # something didn't go right, let's wait and try again
             sleep(500)
-        return(rating)
-                    
+        return rating
+
     def get_prediction(self):
-        '''
+        """
         Retrieve the predicted assessment rating from ORES using the
         current revision of the article.
-        '''
+        """
         if not self._prediction:
             self._prediction = self._get_ores_pred()
-            
-        return(self._prediction)
+
+        return self._prediction
 
     def get_ar_prediction(self):
-        '''
+        """
         Retrieve the predicted assessment rating from ORES using the
         current revision of the article.
-        '''
+        """
         if not self._prediction:
             self._prediction = self._get_QAF_pred()
-            
-        return(self._prediction)
+
+        return self._prediction
 
     def _get_qualmetrics(self):
-        '''
+        """
         Populate quality metrics used for task suggestions.
-        '''
+        """
 
         try:
             qualfeatures = qm.get_qualfeatures(self.get())
         except pywikibot.exceptions.NoPageError:
-            return()
+            return ()
         except pywikibot.exceptions.IsRedirectPageError:
-            return()
+            return ()
 
         # 1: length
-        self._qualdata['length'] = log(qualfeatures.length, 2)
+        self._qualdata["length"] = log(qualfeatures.length, 2)
         # 2: lengthToRefs
-        self._qualdata['lengthToRefs'] = qualfeatures.length \
-                                     /(1 + qualfeatures.num_references)
+        self._qualdata["lengthToRefs"] = qualfeatures.length / (
+            1 + qualfeatures.num_references
+        )
 
         # 3: completeness
-        self._qualdata['completeness'] = 0.4 * qualfeatures.num_pagelinks
-        
-        # 4: numImages
-        self._qualdata['numImages'] = qualfeatures.num_imagelinks
-        # 5: headings
-        self._qualdata['headings'] = qualfeatures.num_headings_lvl2 \
-                                     + 0.5 * qualfeatures.num_headings_lvl3
+        self._qualdata["completeness"] = 0.4 * qualfeatures.num_pagelinks
 
-        return()
-    
+        # 4: numImages
+        self._qualdata["numImages"] = qualfeatures.num_imagelinks
+        # 5: headings
+        self._qualdata["headings"] = (
+            qualfeatures.num_headings_lvl2 + 0.5 * qualfeatures.num_headings_lvl3
+        )
+
+        return ()
+
     def get_suggestions(self):
-        '''
+        """
         Decide whether this article is in need of specific improvements,
         and if so, suggest those.
-        '''
+        """
 
         # I need page data for:
         if not self._qualdata:
             self._get_qualmetrics()
 
-        for (key, keyDistr) in config.task_dist.items():
+        for key, keyDistr in config.task_dist.items():
             if not key in self._qualdata:
-                logging.warning("Warning: suggestion key {0} not found in page data for {1}".format(key, self.title()))
+                logging.warning(
+                    "Warning: suggestion key {0} not found in page data for {1}".format(
+                        key, self.title()
+                    )
+                )
                 continue
 
-            if key == u"lengthToRefs":
+            if key == "lengthToRefs":
                 pVal = 1 - keyDistr.cdf(self._qualdata[key])
             else:
                 # calculate P-value from CDF
                 pVal = keyDistr.cdf(self._qualdata[key])
 
-            logging.debug("pVal for {task} is {p:.5f}".format(task=key,
-                                                              p=pVal))
-            verdict = 'no'
+            logging.debug("pVal for {task} is {p:.5f}".format(task=key, p=pVal))
+            verdict = "no"
             if pVal < config.task_p_yes:
-                verdict = 'yes'
+                verdict = "yes"
             elif pVal < config.task_p_maybe:
-                verdict = 'maybe'
+                verdict = "maybe"
             self._qualtasks[key] = verdict
 
-        return(self._qualtasks)
+        return self._qualtasks
+
 
 def TalkPageGenerator(pages):
-    '''
+    """
     Generate talk pages from a list of pages.
-    '''
+    """
     for page in pages:
         yield page.toggleTalkPage()
-    
+
+
 def RatingGenerator(pages, step=50):
-    '''
+    """
     Generate pages with assessment ratings.
-    '''
+    """
 
     # Preload talk page contents in bulk to speed up processing
     # Note: since pywikibot's PreloadingGenerator doesn't guarantee
     #       order, we'll have to exhaust it and map title to talkpage.
     tp_map = {}
-    for talkpage in PreloadingGenerator(
-            TalkPageGenerator(pages), step=step):
+    for talkpage in PreloadingGenerator(TalkPageGenerator(pages), step=step):
         tp_map[talkpage.title(withNamespace=False)] = talkpage
 
     # iterate and set the rating
@@ -451,17 +462,18 @@ def RatingGenerator(pages, step=50):
             talkpage = tp_map[page.title()]
             page._rating = page.get_assessment(talkpage.get())
         except KeyError:
-            page._rating = 'na'
+            page._rating = "na"
         except pywikibot.exceptions.NoPageError:
-            page._rating = 'na'
+            page._rating = "na"
         except pywikibot.exceptions.IsRedirectPageError:
-            page._rating = 'na'
+            page._rating = "na"
         yield page
+
 
 def PageRevIdGenerator(site, pagelist, step=50):
     """
     Generate page objects with their most recent revision ID.
-    
+
     This generator is a modified version of `preloadpages` in pywikibot.site.
 
     :param site: site we're requesting page IDs from
@@ -470,8 +482,9 @@ def PageRevIdGenerator(site, pagelist, step=50):
     :type step: int
     """
     for sublist in backports.batched(pagelist, step):
-        pageids = [str(p._pageid) for p in sublist
-                   if hasattr(p, "_pageid") and p._pageid > 0]
+        pageids = [
+            str(p._pageid) for p in sublist if hasattr(p, "_pageid") and p._pageid > 0
+        ]
         # cache = dict((p.title(withSection=False), p) for p in sublist)
         cache = dict((p.title(), p) for p in sublist)
         props = "revisions|info|categoryinfo"
@@ -482,36 +495,36 @@ def PageRevIdGenerator(site, pagelist, step=50):
             rvgen.request["pageids"] = "|".join(pageids)
         else:
             rvgen.request["titles"] = "|".join(list(cache.keys()))
-        rvgen.request[u"rvprop"] = u"ids|flags|timestamp|user|comment"
-        
-        logging.debug(u"Retrieving {n} pages from {s}.".format(n=len(cache),
-                                                              s=site))
+        rvgen.request["rvprop"] = "ids|flags|timestamp|user|comment"
+
+        logging.debug("Retrieving {n} pages from {s}.".format(n=len(cache), s=site))
         for pagedata in rvgen:
-            logging.debug(u"Preloading {0}".format(pagedata))
+            logging.debug("Preloading {0}".format(pagedata))
             try:
-                if pagedata['title'] not in cache:
-#                   API always returns a "normalized" title which is
-#                   usually the same as the canonical form returned by
-#                   page.title(), but sometimes not (e.g.,
-#                   gender-specific localizations of "User" namespace).
-#                   This checks to see if there is a normalized title in
-#                   the response that corresponds to the canonical form
-#                   used in the query.
+                if pagedata["title"] not in cache:
+                    #                   API always returns a "normalized" title which is
+                    #                   usually the same as the canonical form returned by
+                    #                   page.title(), but sometimes not (e.g.,
+                    #                   gender-specific localizations of "User" namespace).
+                    #                   This checks to see if there is a normalized title in
+                    #                   the response that corresponds to the canonical form
+                    #                   used in the query.
                     for key in cache:
-                        if site.sametitle(key, pagedata['title']):
-                            cache[pagedata['title']] = cache[key]
+                        if site.sametitle(key, pagedata["title"]):
+                            cache[pagedata["title"]] = cache[key]
                             break
                     else:
                         logging.warning(
-                            u"preloadpages: Query returned unexpected title"
-                            u"'%s'" % pagedata['title'])
+                            "preloadpages: Query returned unexpected title"
+                            "'%s'" % pagedata["title"]
+                        )
                         continue
             except KeyError:
-                logging.debug(u"No 'title' in %s" % pagedata)
-                logging.debug(u"pageids=%s" % pageids)
-                logging.debug(u"titles=%s" % list(cache.keys()))
+                logging.debug("No 'title' in %s" % pagedata)
+                logging.debug("pageids=%s" % pageids)
+                logging.debug("titles=%s" % list(cache.keys()))
                 continue
-            page = cache[pagedata['title']]
+            page = cache[pagedata["title"]]
             api.update_page(page, pagedata)
 
         # Since we're not loading content and the pages are already in
@@ -519,10 +532,11 @@ def PageRevIdGenerator(site, pagelist, step=50):
         # received in case that's important.
         for page in sublist:
             yield page
-        
+
+
 # Updated to use ORES v3
 def PredictionGenerator(site, pages, step=50):
-    '''
+    """
     Generate pages with quality predictions using ORES v3.
     :param site: site of the pages we are predicting for
     :type pages: pywikibot.Site
@@ -531,84 +545,87 @@ def PredictionGenerator(site, pages, step=50):
     :param step: Number of pages to get predictions for at a time,
                  maximum is 50.
     :type step: int
-    '''
+    """
     if step > 50:
         step = 50
-    
-    langcode = '{lang}wiki'.format(lang=site.lang)
-    
+
+    langcode = "{lang}wiki".format(lang=site.lang)
+
     # ORES v3 base URL structure:
     # https://ores.wikimedia.org/v3/scores/{wiki}/{revids}/{models}
-    
+
     for page_group in backports.batched(pages, step):
         revid_page_map = {}  # rev id (str) -> page object
         # Load most recent revision IDs
         for page in PageRevIdGenerator(site, page_group):
             revid_page_map[str(page.latest_revision_id)] = page
-            
+
         # Construct ORES v3 URL
-        revids = '|'.join([str(page.latest_revision_id) for page in page_group])
-        url = '{ores_url}v3/scores/{langcode}/{revids}/wp10'.format(
-            ores_url=config.ORES_url,
-            langcode=langcode,
-            revids=revids
+        revids = "|".join([str(page.latest_revision_id) for page in page_group])
+        url = "{ores_url}v3/scores/{langcode}/{revids}/wp10".format(
+            ores_url=config.ORES_url, langcode=langcode, revids=revids
         )
-        
-        logging.debug('Requesting predictions for {n} pages from ORES v3'.format(
-            n=len(revid_page_map)))
-        
+
+        logging.debug(
+            "Requesting predictions for {n} pages from ORES v3".format(
+                n=len(revid_page_map)
+            )
+        )
+
         num_attempts = 0
         while num_attempts < config.max_url_attempts:
             r = requests.get(
                 url,
                 headers={
-                    'User-Agent': config.http_user_agent,
-                    'From': config.http_from
-                }
+                    "User-Agent": config.http_user_agent,
+                    "From": config.http_from,
+                },
             )
             num_attempts += 1
-            
+
             if r.status_code == 200:
                 try:
                     response = r.json()
                     # ORES v3 response structure is different
-                    scores = response.get('scores', {}).get(langcode, {})
-                    
+                    scores = response.get("scores", {}).get(langcode, {})
+
                     for revid, score_data in scores.items():
-                        wp10_score = score_data.get('wp10', {})
-                        if 'error' in wp10_score:
-                            logging.warning(f"Error in ORES prediction for revision {revid}: {wp10_score['error']}")
+                        wp10_score = score_data.get("wp10", {})
+                        if "error" in wp10_score:
+                            logging.warning(
+                                f"Error in ORES prediction for revision {revid}: {wp10_score['error']}"
+                            )
                             continue
-                            
-                        prediction = wp10_score.get('score', {}).get('prediction')
+
+                        prediction = wp10_score.get("score", {}).get("prediction")
                         if prediction and revid in revid_page_map:
                             revid_page_map[revid].set_prediction(prediction.lower())
                     break
-                    
+
                 except ValueError:
                     logging.warning("Unable to decode ORES response as JSON")
                 except KeyError as e:
                     logging.warning(f"ORES response keys not as expected: {str(e)}")
-            
+
             # Wait before retrying
             # sleep(500)
             sleep(1)
-            
+
         for page in page_group:
             yield page
 
 
 def PredictionGenerator_QAF(pages, step=50):
-    '''
+    """
     Generate pages with quality predictions using quality article features api.
-    '''
+    """
 
     for page in pages:
         page.get_ar_prediction()
         yield page
     # if step > 50:
     #     step = 50
-    # 
+    #
     # for page_group in backports.batched(pages, step):
     #     for page in page_group:
     #         yield page.get_ar_prediction()
