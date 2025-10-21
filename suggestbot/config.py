@@ -40,6 +40,7 @@ lang_codes = {
     "hu": "hungarian",
     "ru": "russian",
     "fr": "french",
+    "ar": "arabic",
 }
 
 # Edit comments used when posting recommendations
@@ -52,6 +53,7 @@ edit_comment = {
     "hu": "SuggestBot recommends these articles...",
     "ru": "SuggestBot предлагает следующие статьи...",
     "fr": "Suggestbot recommande ces articles...",
+    "ar": "بوت الاقتراحات يوصي بهذه المقالات...",
 }
 
 # Edit comments used when removing the request template
@@ -65,6 +67,7 @@ replace_comment = {
     "hu": "Removed SuggestBot request template to prevent multiple suggestions posts",
     "ru": "Удаление шаблона запроса к SuggestBot для предотвращения дублирования сообщений",
     "fr": "Retrait du modèle de demande pour SuggestBot pour éviter les ajouts multiples",
+    "ar": "تمت إزالة قالب طلب بوت الاقتراحات لمنع إرسال اقتراحات متعددة",
 }
 
 # Table names for database tables containing task categories
@@ -78,6 +81,7 @@ task_table = {
     "hu": "huwiki_work_category_data",
     "ru": "ruwiki_work_category_data",
     "fr": "frwiki_work_category_data",
+    "ar": "arwiki_work_category_data",
 }
 
 # Configuration of categories containing articles that need work.
@@ -116,6 +120,7 @@ stub_re = {
     "hu": None,
     "ru": r"Незавершённые статьи",
     "fr": r"Wikipédia[:]ébauche\s+",
+    "ar": r"بذرة",  # Arabic
 }
 
 tasks = {
@@ -136,7 +141,7 @@ tasks = {
             "categories": [
                 "All pages needing cleanup",
                 "Articles with excessive see also sections",
-                "Wikipedia introduction cleanup" "All articles needing copy edit",
+                "Wikipedia introduction cleanupAll articles needing copy edit",
             ],
             "recurseCategories": {},
             "inclusion": None,
@@ -562,6 +567,44 @@ tasks = {
             "exclusion": None,
         },
     },
+    "ar": {
+        "MERGE": {
+            "categories": ["مقالات للدمج", "جميع المقالات المقترح دمجها"],
+            "recurseCategories": {"حسب الشهر": 1},
+            "inclusion": None,
+            "exclusion": stub_re["ar"],
+        },
+        "WIKIFY": {
+            "categories": ["مقالات بحاجة للتنسيق", "جميع المقالات التي بحاجة للتنسيق"],
+            "recurseCategories": {"حسب الشهر": 1},
+            "inclusion": None,
+            "exclusion": None,
+        },
+        "SOURCE": {
+            "categories": ["مقالات بحاجة لمصادر أكثر", "مقالات بدون مصدر"],
+            "recurseCategories": {"حسب الشهر": 1},
+            "inclusion": None,
+            "exclusion": None,
+        },
+        "EXPAND": {
+            "categories": ["مقالات بحاجة لتحديث المصادر"],
+            "recurseCategories": {"حسب الشهر": 1},
+            "inclusion": None,
+            "exclusion": None,
+        },
+        "STUB": {
+            "categories": [],
+            "recurseCategories": {"بذرة": 5, "جميع مقالات البذور": 1},
+            "inclusion": stub_re["ar"],
+            "exclusion": None,
+        },
+        "ORPHAN": {
+            "categories": ["مقالات يتيمة"],
+            "recurseCategories": {"حسب الشهر": 1},
+            "inclusion": None,
+            "exclusion": None,
+        },
+    },
 }
 
 # URL to the Tool Labs webservice used to get quality metadata
@@ -628,6 +671,7 @@ rc_keep = {
     "fa": 1461,
     "hu": 1461,
     "fr": 365,
+    "ar": 365,
 }
 
 # Configuration of text tables used to store data
@@ -639,6 +683,7 @@ text_table = {
     "fa": "fawiki_solr_text",
     "hu": "huwiki_solr_text",
     "ru": "ruwiki_solr_text",
+    "ar": "arwiki_solr_text",
 }
 
 # Configuration of database tables used to store revision data
@@ -652,6 +697,7 @@ revision_table = {
     "ru": "ruwiki_revisions",
     "hu": "huwiki_revisions",
     "fr": "frwiki_revisions",
+    "ar": "arwiki_revisions",
 }
 
 # Configuration of what templates to use.  Complete title
@@ -699,6 +745,10 @@ templates = {
         "request": "Utilisateur:SuggestBot/Modèles/Requêtes",
         "regulars": "Utilisateur:SuggestBot/Modèles/Souscriptions",
     },
+    "ar": {
+        "request": "مستخدم:إقتراح بوت/قوالب/طلبات",
+        "regulars": "مستخدم:إقتراح بوت/قوالب/الإشتراكات",
+    },
 }
 
 # Templates added by our regular users.
@@ -731,6 +781,10 @@ config_templates = {
         "config": "Utilisateur:SuggestBot/config",
         "userbox": "Utilisateur:SuggestBot/Boîte utilisateur",
     },
+    "ar": {
+        "config": "مستخدم:إقتراح بوت/إعدادات",
+        "userbox": "مستخدم:إقتراح بوت/إخطارات",
+    },
 }
 
 # Which references we'll ignore when looking for backlinks
@@ -762,6 +816,10 @@ template_stoplist = {
         "کاربر:SuggestBot/config",
         "کاربر:SuggestBot/Getting suggestions regularly",
     ],
+    "ar": [
+        "مستخدم:إقتراح بوت/إعدادات",
+        "مستخدم:إقتراح بوت/الحصول على اقتراحات بانتظام",
+    ],
 }
 
 # Request templates used in the WP:Teahouse experiment
@@ -774,6 +832,7 @@ teahouse_templates = {
     "ru": [],
     "hu": [],
     "fr": [],
+    "ar": [],
 }
 
 # Templates used for one-time requests.
@@ -808,6 +867,9 @@ request_template = {
     "fr": {
         "Utilisateur:SuggestBot/suggest": ["User:SuggestBot/suggest"],
     },
+    "ar": {
+        "مستخدم:إقتراح بوت/اقترح": [],
+    },
 }
 
 # Regular expressions used to match the section heading of requests
@@ -823,6 +885,7 @@ request_head_re = {
     "ru": [],
     "hu": [],
     "fr": [],
+    "ar": [],
 }
 
 # Name of the category parameter used in Teahouse suggestions,
@@ -836,6 +899,7 @@ th_category = {
     "ru": "",
     "hu": "",
     "fr": "",
+    "ar": "",
 }
 
 # Suffix used in category names to match WikiProject category names,
@@ -849,6 +913,7 @@ wikiproject_suffix = {
     "ru": "",
     "hu": "",
     "fr": "",
+    "ar": "",
 }
 
 ## WikiProject suggestion request parameters
@@ -900,6 +965,7 @@ empty_placeholder = {
     "ru": "<!-- Empty placeholder left by SuggestBot, feel free to delete -->",
     "hu": "",
     "fr": "<!-- Espace vide ajouté par SuggestBot, peut être enlevé -->",
+    "ar": "<!-- تم ترك مساحة فارغة بواسطة إقتراح بوت، لا تتردد في حذفها عند الضرورة -->",
 }
 
 # Base-filename of file to store names of users where the configuration
@@ -946,6 +1012,11 @@ template_parameters = {
         "remplacement": "replace",
         "level": "headlevel",
     },
+    "ar": {
+        "التكرار": "frequency",
+        "استبدال": "replace",
+        "المستوى": "headlevel",
+    },
 }
 
 # Regular expressions for matching desired frequency of recommendations.
@@ -959,6 +1030,7 @@ once_monthly = {
     "ru": r"ежемесячно|раз в месяц",
     "fa": r"monthly|once a month",
     "fr": r"mensuelle",
+    "ar": r"شهريا|مرة في الشهر",
 }
 twice_monthly = {
     "en": r"twice a month|(every|once (a|every)) (fortnight|two weeks)",
@@ -968,6 +1040,7 @@ twice_monthly = {
     "ru": r"дважды в месяц",
     "fa": r"twice a month|every two weeks",
     "fr": r"bimensuelle",
+    "ar": r"مرتين في الشهر",
 }
 weekly = {
     # NOTE: we're allowing users to specify getting them daily, but serve them weekly
@@ -978,6 +1051,7 @@ weekly = {
     "ru": r"еженедельно|раз в неделю",
     "fa": r"(once a|every) week|weekly",
     "fr": r"hebdomadaire",
+    "ar": r"أسبوعيا|يوميا|(مرة|مرتين) في (الأسبوع|اليوم)",
 }
 
 # Dictionary holding the text of the header of the SuggestBot
@@ -991,6 +1065,7 @@ rec_headers = {
     "ru": "== Статьи, которые Вам возможно захочется исправить, от SuggestBot ==",
     "fa": "== مقاله‌های پیشنهادی توسط ربات پیشنهاددهنده ==",
     "fr": "== SuggestBot vous propose… ==",
+    "ar": "== مقالات قد ترغب في تعديلها، من بوت الاقتراحات ==",
 }
 
 rec_header_re = {
@@ -1001,6 +1076,7 @@ rec_header_re = {
     "ru": "Статьи, которые Вам возможно захочется исправить, от SuggestBot",
     "fa": "مقاله‌های پیشنهادی توسط ربات پیشنهاددهنده",
     "fr": "SuggestBot vous propose…",
+    "ar": "مقالات قد ترغب في تعديلها، من بوت الاقتراحات",
 }
 
 # Dictionarly holding lists of titles of subsections of SuggestBot's
@@ -1015,6 +1091,7 @@ sub_header_re = {
     "ru": [],
     "hu": [],
     "fr": [],
+    "ar": [],
 }
 
 # Regular expressions to match a Yes/No parameter value in
@@ -1027,6 +1104,7 @@ re_yes = {
     "ru": r"\s*да\s*",
     "fa": r"\s*yes\s*",
     "fr": r"\s*(oui|accepter)\s*",
+    "ar": r"\s*نعم\s*",
 }
 re_no = {
     "en": r"\s*no\s*",
@@ -1036,6 +1114,7 @@ re_no = {
     "ru": r"\s*нет\s*",
     "fa": r"\s*no\s*",
     "fr": r"\s*(non|refuser)\s*",
+    "ar": r"\s*لا\s*",
 }
 
 ## Regular expressions to match list-articles in the given language
@@ -1049,6 +1128,7 @@ list_re = {
     "fa": r"^فهرست",
     "ru": r"(^Список|(:Алфавитный[ _]|Хронологический[ _])список)|—[ _]список",
     "fr": r"[Ll]iste[ _]d[e']",
+    "ar": r"^قائمة[ _]",
 }
 
 # P-value cutoffs for determining if an article-specific task suggestion
@@ -1164,6 +1244,7 @@ task_categories = {
     "ru": "SOURCE,WIKIFY,IMAGES,ORPHAN,EXPAND,STUB,CLEANUP,RELIABILITY,UPDATE,NOTABILITY,TRANSLATE,OBJECTIVITY",
     "fa": "SOURCE,WIKIFY,STYLE,ORPHAN,EXPAND,MERGE,OBJECTIVITY,STUB,IMAGES,TRANSLATE",
     "fr": "SOURCE1,SOURCE2,VERIFY,UPDATE,UNENC,WIKIFY,ORPHAN,PROMO,STUB1,STUB2",
+    "en": "STUB1,STUB2,SOURCE1,SOURCE2,CLEANUP,EXPAND,MERGE,WIKIFY,ORPHAN",
 }
 
 ## Do we filter minor and unimportant edits by default?
@@ -1232,6 +1313,7 @@ talkpage_limit = {
     "pt": 0,
     "ru": 0,
     "sv": 0,
+    "ar": 0,
 }
 
 page_limit = {"en": 1024, "fa": 0, "fr": 0, "hu": 0, "no": 0, "pt": 0, "ru": 0, "sv": 0}
@@ -1245,6 +1327,7 @@ talkpage_warning = {
     "pt": "",
     "ru": "",
     "sv": "",
+    "ar": "",
 }
 
 page_warning = {
@@ -1256,4 +1339,5 @@ page_warning = {
     "pt": "",
     "ru": "",
     "sv": "",
+    "ar": "",
 }
