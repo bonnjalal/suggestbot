@@ -4,7 +4,7 @@
 Wikipedia page object with properties reflecting an article's
 current assessment rating, it's predicted assessment rating,
 and the average number of views over the past 14 days.  The
-assessment rating is calculated via the MediaWiki Action API.
+assessment rating is calculated by parsing talk page wikitext.
 Predicted rating is calculated by the Lift Wing service. Page
 views are grabbed from the Wikimedia Pageview API.
 
@@ -29,7 +29,7 @@ Boston, MA  02110-1301, USA.
 
 ## Purpose of this module:
 ## Extend the Pywikibot page object with information on:
-## 1: the page's assessment rating (via API)
+## 1: the page's assessment rating (by parsing wikitext)
 ## 2: predicted assessment rating by Lift Wing
 ## 3: page views for the past 14 days as well as average views/day
 ##     over the same time period
@@ -41,9 +41,9 @@ from time import sleep
 from datetime import date, timedelta
 from urllib.parse import quote
 from math import log
-# from collections import namedtuple  <- REMOVED
-# from mwtypes import Timestamp     <- REMOVED
 
+# from collections import namedtuple
+# from mwtypes import Timestamp
 import requests
 import mwparserfromhell as mwp
 import pywikibot
@@ -52,7 +52,7 @@ from pywikibot.tools.itertools import itergroup
 from pywikibot.data import api
 from pywikibot import backports
 
-# from articlequality.extractors import enwiki  <- REMOVED
+# from articlequality.extractors import enwiki  <- #DEPRECATED
 
 from scipy import stats
 
@@ -166,89 +166,98 @@ class Page(pywikibot.Page):
         """
         self._rating = new_rating
 
-    def get_assessment(self, talk_page_obj):
+    def get_assessment(self, wikitext):
         """
-        Use the MediaWiki API (prop=pageprops) on the talk page
-        to get the assessment rating.
+        Parse the given wikitext and extract any assessment rating.
 
-        :param talk_page_obj: The pywikibot.Page object for the talk page
-        :returns: assessment rating (str)
+        This is a reimplementation of the logic from the deprecated
+        'articlequality' library.
+
+        If multiple ratings are present, the highest rating is used.
+
+        :param wikitext: wikitext of a talk page
+        :returns: assessment rating
         """
+
+        rating = "na"
+        ratings = []  # numeric ratings
+
         try:
-            if not talk_page_obj.exists():
-                return "na"
+            if len(wikitext) > 8 * 1024:
+                wikitext = wikitext[: 8 * 1024]
 
-            # The .properties() method returns the *cached* properties.
-            all_props = talk_page_obj.properties()
-            page_props_dict = {}
-
-            # Check if 'pageprops' is already in the cache
-            if "pageprops" in all_props:
-                page_props_dict = all_props.get("pageprops", {})
-            else:
-                # Not cached. We must fetch it manually.
-                # We use api.PropertyGenerator for a single page.
-                logging.debug(f"Fetching pageprops for {talk_page_obj.title()}")
-                gen = api.PropertyGenerator("pageprops", site=talk_page_obj.site)
-                gen.request["titles"] = [talk_page_obj.title()]
-
-                # Run the generator and get the first (and only) result
-                page_data = next(iter(gen), None)
-
-                if page_data and "pageprops" in page_data:
-                    # Manually update the page object's cache
-                    api.update_page(talk_page_obj, page_data)
-                    page_props_dict = page_data.get("pageprops", {})
-                else:
-                    # API call failed or returned no pageprops data
-                    logging.warning(
-                        f"No pageprops data returned for {talk_page_obj.title()}"
-                    )
-                    return "na"
-
-            # Now we have page_props_dict, either from cache or from the API
-            if "wgPageAssessmentClass" in page_props_dict:
-                rating = page_props_dict["wgPageAssessmentClass"].lower()
-                if rating in self._wp10_scale:
-                    return rating
-                else:
-                    logging.info(
-                        f"Unknown rating '{rating}' from pageprops for {self.title()}"
-                    )
-                    return "na"
-            else:
-                # Page has props, but not the specific assessment class
-                return "na"
-
-        except pywikibot.exceptions.NoPageError:
-            return "na"
+            wikicode = mwp.parse(wikitext)
         except Exception as e:
-            # Log the actual exception
-            logging.error(
-                f"Error getting pageprops for {talk_page_obj.title()}: {e}",
-                exc_info=True,
+            logging.warning(
+                f"mwparserfromhell failed to parse wikitext for {self.title()}: {e}"
             )
             return "na"
+
+        # Find all templates
+        templates = wikicode.filter_templates()
+
+        for t in templates:
+            try:
+                # Normalize template name to check if it's a WikiProject banner
+                template_name = t.name.lower().strip().replace("_", " ")
+
+                if not (
+                    template_name.startswith("wikiproject")
+                    or template_name.startswith("wp")
+                    or "wiki project" in template_name
+                ):
+                    continue  # Not a wikiproject banner
+
+                # Check if the template has a 'class' parameter
+                if t.has("class"):
+                    class_val = str(t.get("class").value).strip().lower()
+
+                    if class_val in self._wp10_scale:
+                        ratings.append(self._wp10_scale[class_val])
+
+                    elif class_val in ("bplus", "b+"):
+                        if "b" in self._wp10_scale:
+                            ratings.append(self._wp10_scale["b"])
+                    elif class_val in ("a-class", "aclass"):
+                        if "a" in self._wp10_scale:
+                            ratings.append(self._wp10_scale["a"])
+
+            except Exception:
+                continue
+
+        if ratings:
+            try:
+                # set rating to the highest rating (max numeric value)
+                best_rating_num = max(ratings)
+                # Convert the number back to the string (e.g., 'b', 'ga')
+                rating = {v: k for k, v in self._wp10_scale.items()}[best_rating_num]
+            except Exception as e:
+                logging.warning(f"Could not map rating number for {self.title()}: {e}")
+                rating = "na"
+
+        return rating
 
     def get_rating(self):
         """
         Retrieve the current article assessment rating as found on the
-        article's talk page using the API.
+        article's talk page by parsing its wikitext.
 
         :returns: The article's assessment rating, 'na' if it is not assessed.
         """
-        if self._rating is None:  # Use 'is None' to allow "na" to be cached
+        if self._rating is None:
             try:
                 tp = self.toggleTalkPage()
-
-                # The get_assessment method will automatically handle
-                # loading the pageprops when it accesses tp.pageprops.
-                # The previous 'if' check and 'get_pageprops()' call were incorrect.
-                self._rating = self.get_assessment(tp)
-
+                # Get the raw wikitext
+                wikitext = tp.get()
+                self._rating = self.get_assessment(wikitext)
             except pywikibot.exceptions.NoPageError:
                 self._rating = "na"
             except pywikibot.exceptions.IsRedirectPageError:
+                self._rating = "na"
+            except Exception as e:
+                logging.error(
+                    f"Failed to get or parse talk page for {self.title()}: {e}"
+                )
                 self._rating = "na"
 
         return self._rating
@@ -299,7 +308,6 @@ class Page(pywikibot.Page):
         """
         if not hasattr(self, "_revid"):
             try:
-                # Attempt to load revisions if not already loaded
                 self.site.loadrevisions(self)
             except Exception as e:
                 logging.warning(f"Failed to load revision for {self.title()}: {e}")
@@ -311,7 +319,6 @@ class Page(pywikibot.Page):
 
         langcode = "{lang}wiki".format(lang=self.site.lang)
 
-        # Construct the Lift Wing model name and API endpoint
         model_name = f"{langcode}-articlequality"
         url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{model_name}:predict"
 
@@ -330,11 +337,10 @@ class Page(pywikibot.Page):
 
                 if r.status_code == 200:
                     response = r.json()
-                    # Parse the Lift Wing response
                     rating = response[langcode]["scores"][str(self._revid)][
                         "articlequality"
                     ]["score"]["prediction"].lower()
-                    break  # ok, done
+                    break
                 else:
                     logging.warning(
                         f"Lift Wing API returned status {r.status_code} for rev_id {self._revid}"
@@ -351,8 +357,7 @@ class Page(pywikibot.Page):
                     f"Lift Wing response keys not as expected for rev_id {self._revid}"
                 )
 
-            # something didn't go right, let's wait and try again
-            sleep(1)  # Using 1 second sleep
+            sleep(1)
         return rating
 
     def get_prediction(self):
@@ -446,98 +451,26 @@ def TalkPageGenerator(pages):
         yield page.toggleTalkPage()
 
 
-# -----------------------------------------------------------------
-# MODIFIED FUNCTION
-# -----------------------------------------------------------------
 def RatingGenerator(pages, step=50):
     """
-    Generate pages with assessment ratings loaded via API.
-
-    This generator batches API requests for talk page 'pageprops'.
-
-    :param pages: An iterable of article Page objects.
-    :param step: How many talk pages to query in a single API call.
+    Generate pages with assessment ratings.
     """
 
-    # Create a mapping of talk page titles to article Page objects
-    talk_page_map = {}
-    talk_page_list = []
+    # Preload talk page contents in bulk to speed up processing
+    tp_map = {}
+    for talkpage in PreloadingGenerator(TalkPageGenerator(pages), step=step):
+        tp_map[talkpage.title(withNamespace=False)] = talkpage
 
-    # We must consume the 'pages' generator to create our map
-    pages_list = list(pages)
-
-    for page in pages_list:
+    for page in pages:
         try:
-            talk_page = page.toggleTalkPage()
-            talk_page_map[talk_page.title()] = page
-            talk_page_list.append(talk_page)
+            talkpage = tp_map[page.title()]
+            page._rating = page.get_assessment(talkpage.get())
+        except KeyError:
+            page._rating = "na"
         except pywikibot.exceptions.NoPageError:
-            page.set_rating("na")  # Article has no talk page
-
-    if not talk_page_list:
-        logging.debug("RatingGenerator: No talk pages to process.")
-        for page in pages_list:
-            yield page  # Yield pages with 'na' rating
-        return
-
-    # Use PropertyGenerator to batch-load pageprops for the talk pages
-    # We iterate over the talk_page_list in batches
-    for i in range(0, len(talk_page_list), step):
-        batch = talk_page_list[i : i + step]
-
-        prop_gen = api.PropertyGenerator("pageprops", site=batch[0].site)
-        prop_gen.set_maximum_items(-1)  # Do not limit rvlimit
-        prop_gen.request["titles"] = [tp.title() for tp in batch]
-
-        logging.debug(
-            f"RatingGenerator: Retrieving pageprops for {len(batch)} talk pages."
-        )
-
-        # This loop iterates through API batch responses
-        for tp_data in prop_gen:
-            try:
-                title = tp_data["title"]
-                if title not in talk_page_map:
-                    continue
-
-                article_page = talk_page_map[title]
-
-                # Page is missing, a redirect, or invalid
-                if (
-                    "missing" in tp_data
-                    or "invalid" in tp_data
-                    or "redirect" in tp_data
-                ):
-                    article_page.set_rating("na")
-                    continue
-
-                props = tp_data.get("pageprops", {})
-                rating = "na"  # Default
-
-                if "wgPageAssessmentClass" in props:
-                    api_rating = props["wgPageAssessmentClass"].lower()
-                    if api_rating in article_page._wp10_scale:
-                        rating = api_rating
-                    # Add any other needed mappings here
-
-                article_page.set_rating(rating)
-
-                # Also update the talk_page object in pywikibot's cache
-                # This makes tp.pageprops available later without a re-fetch
-                tp = talk_page_map[title].toggleTalkPage()
-                api.update_page(tp, tp_data)
-
-            except KeyError:
-                logging.warning(f"RatingGenerator: API response missing 'title' key.")
-
-    # Now yield the original page objects, which have their ratings set
-    for page in pages_list:
-        if page._rating is None:
-            # This can happen if the API request failed
-            logging.debug(
-                f"RatingGenerator: No rating found for {page.title()}, setting 'na'."
-            )
-            page.set_rating("na")
+            page._rating = "na"
+        except pywikibot.exceptions.IsRedirectPageError:
+            page._rating = "na"
         yield page
 
 
@@ -565,7 +498,7 @@ def PageRevIdGenerator(site, pagelist, step=50):
             try:
                 if pagedata["title"] not in cache:
                     for key in cache:
-                        if site.sametitle(key, pageda["title"]):
+                        if site.sametitle(key, pagedata["title"]):
                             cache[pagedata["title"]] = cache[key]
                             break
                     else:

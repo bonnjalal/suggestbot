@@ -23,7 +23,7 @@ page2 = Page(site2, "إيلون ماسك")
 print("{0} has a prediction of {1}".format(page2.title(), page2.get_ar_prediction()))
 
 page = Page(site, "Clarence Darrow")
-print("{0} has a prediction of {1}".format(page.title(), page.get_rating()))
+print("{0} has a prediction of {1}".format(page.title(), page.get_prediction()))
 
 page = Page(site, "Andre Dawson")
 print("{0} has a prediction of {1}".format(page.title(), page.get_rating()))
@@ -35,4 +35,4 @@ page = Page(site, "Jack O'Callahan")
 print("{0} has a prediction of {1}".format(page.title(), page.get_rating()))
 
 page = Page(site, "Switchcraft")
-print("{0} has a prediction of {1}".format(page.title(), page.get_rating()))
+print("{0} has a prediction of {1}".format(page.title(), page.get_prediction()))
