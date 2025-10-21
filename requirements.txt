@@ -2,6 +2,9 @@ mwparserfromhell
 pywikibot
 requests
 # wikiclass
-articlequality
+# articlequality
 docopt
 nltk
+scipy
+mysqlclient
+mwtypes

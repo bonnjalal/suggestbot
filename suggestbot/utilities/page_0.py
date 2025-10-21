@@ -4,12 +4,12 @@
 Wikipedia page object with properties reflecting an article's
 current assessment rating, it's predicted assessment rating,
 and the average number of views over the past 14 days.  The
-assessment rating is calculated via the MediaWiki Action API.
-Predicted rating is calculated by the Lift Wing service. Page
+assessment rating is calculated per Warncke-Wang et al. (CSCW
+2015) from the article's talk page assessments.  Predicted rating
+is calculated by the Objective Revision Evaluation Service.  Page
 views are grabbed from the Wikimedia Pageview API.
 
 Copyright (C) 2005-2016 SuggestBot Dev Group
-(Modifications 2025)
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Library General Public
@@ -29,30 +29,37 @@ Boston, MA  02110-1301, USA.
 
 ## Purpose of this module:
 ## Extend the Pywikibot page object with information on:
-## 1: the page's assessment rating (via API)
-## 2: predicted assessment rating by Lift Wing
+## 1: the page's assessment rating
+## 2: predicted assessment rating by ORES
 ## 3: page views for the past 14 days as well as average views/day
-##     over the same time period
+##    over the same time period
 ## 4: specific suggestions for article improvement
 
 import logging
-import json
+
+import requests
+
+import mwparserfromhell as mwp
+
+import pywikibot
+from pywikibot.pagegenerators import PreloadingGenerator
+
+# from pywikibot.tools import itergroup
+from pywikibot.tools.itertools import itergroup
+from pywikibot.data import api
+
+from pywikibot import backports
+
+from math import log
 from time import sleep
 from datetime import date, timedelta
 from urllib.parse import quote
-from math import log
-# from collections import namedtuple  <- REMOVED
-# from mwtypes import Timestamp     <- REMOVED
 
-import requests
-import mwparserfromhell as mwp
-import pywikibot
-from pywikibot.pagegenerators import PreloadingGenerator
-from pywikibot.tools.itertools import itergroup
-from pywikibot.data import api
-from pywikibot import backports
+from collections import namedtuple
+from mwtypes import Timestamp
 
-# from articlequality.extractors import enwiki  <- REMOVED
+# from wikiclass.extractors import enwiki
+from articlequality.extractors import enwiki
 
 from scipy import stats
 
@@ -72,7 +79,7 @@ class Page(pywikibot.Page):
 
         self._avg_views = None  # avg views per last 14 days
         self._rating = None  # current assessment rating
-        self._prediction = None  # predicted rating by Lift Wing
+        self._prediction = None  # predicted rating by ORES
 
         self._wp10_scale = {r: i for i, r in enumerate(config.wp_ratings[site.lang])}
         self._qualdata = {}
@@ -97,12 +104,27 @@ class Page(pywikibot.Page):
         :param http_session: Session to use for HTTP requests
         :type http_session: requests.session
         """
+        # make a URL request to config.pageview_url with the following
+        # information appendend:
+        # languageCode + '.wikipedia/all-access/all-agents/' + uriEncodedArticle + '/daily/' +
+        # startDate.format(config.timestampFormat) + '/' + endDate.format(config.timestampFormat)
+        # Note that we're currently not filtering out spider and bot access,
+        # we might consider doing that.
+
+        # Note: Per the below URL, daily pageviews might be late, therefore
+        # we operate on a 2-week basis starting a couple of days back. We have
+        # no guarantee that the API has two weeks of data, though.
+        # https://wikitech.wikimedia.org/wiki/Analytics/PageviewAPI#Updates_and_backfilling
+
         if not http_session:
             http_session = requests.Session()
 
         today = date.today()
         start_date = today - timedelta(days=15)
         end_date = today - timedelta(days=2)
+
+        # test url for Barack Obama
+        # 'https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/all-agents/Barack%20Obama/daily/20160318/20160331'
 
         url = "{api_url}{lang}.wikipedia/all-access/all-agents/{title}/daily/{startdate}/{enddate}".format(
             api_url=config.pageview_url,
@@ -130,6 +152,8 @@ class Page(pywikibot.Page):
                 logging.warning("Pageview API did not return HTTP status 200")
 
         if view_list:
+            # The views should be in chronological order starting with
+            # the oldest date requested. Iterate and sum.
             total_views = 0
             days = 0
             for item in view_list:
@@ -137,9 +161,9 @@ class Page(pywikibot.Page):
                     total_views += item["views"]
                     days += 1
                 except KeyError:
+                    # no views for this day?
                     pass
-            if days > 0:
-                self._avg_views = total_views / days
+            self._avg_views = total_views / days
 
         return ()
 
@@ -166,86 +190,72 @@ class Page(pywikibot.Page):
         """
         self._rating = new_rating
 
-    def get_assessment(self, talk_page_obj):
+    def get_assessment(self, wikitext):
         """
-        Use the MediaWiki API (prop=pageprops) on the talk page
-        to get the assessment rating.
+        Parse the given wikitext and extract any assessment rating.
 
-        :param talk_page_obj: The pywikibot.Page object for the talk page
-        :returns: assessment rating (str)
+        If multiple ratings are present, the highest rating is used.
+        The same approach is used in the research paper below, where a low
+        amount of disagreement was found between using a majority vote
+        and the highest rating.
+
+        Warncke-Wang, M., Ayukaev, V. R., Hecht, B., and Terveen, L.
+        "The Success and Failure of Quality Improvement Projects in
+        Peer Production Communities", in CSCW 2015.
+
+        :param wikitext: wikitext of a talk page
+        :returns: assessment rating
         """
-        try:
-            if not talk_page_obj.exists():
-                return "na"
 
-            # The .properties() method returns the *cached* properties.
-            all_props = talk_page_obj.properties()
-            page_props_dict = {}
+        rating = "na"
+        ratings = []  # numeric ratings
 
-            # Check if 'pageprops' is already in the cache
-            if "pageprops" in all_props:
-                page_props_dict = all_props.get("pageprops", {})
-            else:
-                # Not cached. We must fetch it manually.
-                # We use api.PropertyGenerator for a single page.
-                logging.debug(f"Fetching pageprops for {talk_page_obj.title()}")
-                gen = api.PropertyGenerator("pageprops", site=talk_page_obj.site)
-                gen.request["titles"] = [talk_page_obj.title()]
+        # Helper objects, the wikiclass extractor wants `mwxml.Page' objects
+        Revision = namedtuple("Revisions", ["id", "timestamp", "sha1", "text"])
 
-                # Run the generator and get the first (and only) result
-                page_data = next(iter(gen), None)
+        class MWXMLPage:
+            def __init__(self, title, namespace, revisions):
+                self.title = title
+                self.namespace = namespace
+                self.revisions = revisions
 
-                if page_data and "pageprops" in page_data:
-                    # Manually update the page object's cache
-                    api.update_page(talk_page_obj, page_data)
-                    page_props_dict = page_data.get("pageprops", {})
-                else:
-                    # API call failed or returned no pageprops data
-                    logging.warning(
-                        f"No pageprops data returned for {talk_page_obj.title()}"
-                    )
-                    return "na"
+            def __iter__(self):
+                return iter(self.revisions)
 
-            # Now we have page_props_dict, either from cache or from the API
-            if "wgPageAssessmentClass" in page_props_dict:
-                rating = page_props_dict["wgPageAssessmentClass"].lower()
-                if rating in self._wp10_scale:
-                    return rating
-                else:
-                    logging.info(
-                        f"Unknown rating '{rating}' from pageprops for {self.title()}"
-                    )
-                    return "na"
-            else:
-                # Page has props, but not the specific assessment class
-                return "na"
+        # NOTE: The assessments are at the top of the page,
+        # and the templates are rather small,
+        # so if the page is > 8k, truncate.
+        if len(wikitext) > 8 * 1024:
+            wikitext = wikitext[: 8 * 1024]
 
-        except pywikibot.exceptions.NoPageError:
-            return "na"
-        except Exception as e:
-            # Log the actual exception
-            logging.error(
-                f"Error getting pageprops for {talk_page_obj.title()}: {e}",
-                exc_info=True,
-            )
-            return "na"
+        # Extract rating observations from a dummy `mwxml.Page` object
+        # where the only revision is our wikitext
+        observations = enwiki.extract(
+            MWXMLPage(self.title(), 1, [Revision(1, Timestamp(1), "aaa", wikitext)])
+        )
+        for observation in observations:
+            try:
+                ratings.append(self._wp10_scale[observation["wp10"]])
+            except KeyError:
+                pass  # invalid rating
+
+        if ratings:
+            # set rating to the highest rating, but the str, not ints
+            rating = {v: k for k, v in self._wp10_scale.items()}[max(ratings)]
+        return rating
 
     def get_rating(self):
         """
         Retrieve the current article assessment rating as found on the
-        article's talk page using the API.
+        article's talk page.
 
         :returns: The article's assessment rating, 'na' if it is not assessed.
         """
-        if self._rating is None:  # Use 'is None' to allow "na" to be cached
+
+        if not self._rating:
             try:
                 tp = self.toggleTalkPage()
-
-                # The get_assessment method will automatically handle
-                # loading the pageprops when it accesses tp.pageprops.
-                # The previous 'if' check and 'get_pageprops()' call were incorrect.
-                self._rating = self.get_assessment(tp)
-
+                self._rating = self.get_assessment(tp.get())
             except pywikibot.exceptions.NoPageError:
                 self._rating = "na"
             except pywikibot.exceptions.IsRedirectPageError:
@@ -269,6 +279,10 @@ class Page(pywikibot.Page):
         """
         Make a request to Article Quality Feature api to get the predicted article rating.
         """
+        # make a URL request to config.QAF_api with the following
+        # information appended:
+        # lang + title
+
         langcode = "{lang}".format(lang=self.site.lang)
 
         url = "{qaf_api}lang={langcode}&title={title}".format(
@@ -283,6 +297,7 @@ class Page(pywikibot.Page):
             if r.status_code == 200:
                 try:
                     response = r.json()
+                    # rating = response['scores'][langcode]['wp10']['scores'][str(self._revid)]['prediction'].lower()
                     rating = response["class"].lower()
                     break  # ok, done
                 except ValueError:
@@ -290,84 +305,64 @@ class Page(pywikibot.Page):
                 except KeyError:
                     logging.warning("QAF response keys not as expected")
 
+            # something didn't go right, let's wait and try again
             sleep(5)
         return rating
 
-    def _get_liftwing_pred(self):
+    def _get_ores_pred(self):
         """
-        Make a request to Lift Wing to get the predicted article rating.
+        Make a request to ORES to get the predicted article rating.
         """
-        if not hasattr(self, "_revid"):
-            try:
-                # Attempt to load revisions if not already loaded
-                self.site.loadrevisions(self)
-            except Exception as e:
-                logging.warning(f"Failed to load revision for {self.title()}: {e}")
+        # make a URL request to config.ORES_url with the following
+        # information appended:
+        # lang + "wiki/wp10/" + revid
 
-        # Check again if loading failed or page has no revisions
         if not hasattr(self, "_revid"):
-            logging.warning(f"No revid for page {self.title()}, skipping Lift Wing.")
-            return None
+            self.site.loadrevisions(self)
 
         langcode = "{lang}wiki".format(lang=self.site.lang)
 
-        # Construct the Lift Wing model name and API endpoint
-        model_name = f"{langcode}-articlequality"
-        url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{model_name}:predict"
-
-        # Prepare headers and data for the POST request
-        post_headers = self._headers.copy()
-        post_headers["Content-Type"] = "application/json"
-
-        data = {"rev_id": self._revid}
+        # url = '{ores_url}/{langcode}/wp10/{revid}'.format(
+        url = "{ores_url}{langcode}/{revid}/wp10".format(
+            ores_url=config.ORES_url, langcode=langcode, revid=self._revid
+        )
 
         rating = None
         num_attempts = 0
         while not rating and num_attempts < config.max_url_attempts:
-            try:
-                r = requests.post(url, headers=post_headers, data=json.dumps(data))
-                num_attempts += 1
-
-                if r.status_code == 200:
+            r = requests.get(url, headers=self._headers)
+            num_attempts += 1
+            if r.status_code == 200:
+                try:
                     response = r.json()
-                    # Parse the Lift Wing response
-                    rating = response[langcode]["scores"][str(self._revid)][
-                        "articlequality"
-                    ]["score"]["prediction"].lower()
+                    # rating = response['scores'][langcode]['wp10']['scores'][str(self._revid)]['prediction'].lower()
+                    rating = response[langcode]["scores"][str(self._revid)]["wp10"][
+                        "score"
+                    ]["prediction"].lower()
                     break  # ok, done
-                else:
-                    logging.warning(
-                        f"Lift Wing API returned status {r.status_code} for rev_id {self._revid}"
-                    )
-
-            except requests.exceptions.RequestException as e:
-                logging.warning(f"Lift Wing request failed: {e}")
-            except ValueError:
-                logging.warning(
-                    f"Unable to decode Lift Wing response as JSON for rev_id {self._revid}"
-                )
-            except KeyError:
-                logging.warning(
-                    f"Lift Wing response keys not as expected for rev_id {self._revid}"
-                )
+                except ValueError:
+                    logging.warning("Unable to decode ORES response as JSON")
+                except KeyError:
+                    logging.warning("ORES response keys not as expected")
 
             # something didn't go right, let's wait and try again
-            sleep(1)  # Using 1 second sleep
+            sleep(500)
         return rating
 
     def get_prediction(self):
         """
-        Retrieve the predicted assessment rating from Lift Wing using the
+        Retrieve the predicted assessment rating from ORES using the
         current revision of the article.
         """
         if not self._prediction:
-            self._prediction = self._get_liftwing_pred()
+            self._prediction = self._get_ores_pred()
 
         return self._prediction
 
     def get_ar_prediction(self):
         """
-        Retrieve the predicted assessment rating from QAF.
+        Retrieve the predicted assessment rating from ORES using the
+        current revision of the article.
         """
         if not self._prediction:
             self._prediction = self._get_QAF_pred()
@@ -378,6 +373,7 @@ class Page(pywikibot.Page):
         """
         Populate quality metrics used for task suggestions.
         """
+
         try:
             qualfeatures = qm.get_qualfeatures(self.get())
         except pywikibot.exceptions.NoPageError:
@@ -386,16 +382,15 @@ class Page(pywikibot.Page):
             return ()
 
         # 1: length
-        if qualfeatures.length > 0:
-            self._qualdata["length"] = log(qualfeatures.length, 2)
-        else:
-            self._qualdata["length"] = 0
+        self._qualdata["length"] = log(qualfeatures.length, 2)
         # 2: lengthToRefs
         self._qualdata["lengthToRefs"] = qualfeatures.length / (
             1 + qualfeatures.num_references
         )
+
         # 3: completeness
         self._qualdata["completeness"] = 0.4 * qualfeatures.num_pagelinks
+
         # 4: numImages
         self._qualdata["numImages"] = qualfeatures.num_imagelinks
         # 5: headings
@@ -410,6 +405,8 @@ class Page(pywikibot.Page):
         Decide whether this article is in need of specific improvements,
         and if so, suggest those.
         """
+
+        # I need page data for:
         if not self._qualdata:
             self._get_qualmetrics()
 
@@ -425,6 +422,7 @@ class Page(pywikibot.Page):
             if key == "lengthToRefs":
                 pVal = 1 - keyDistr.cdf(self._qualdata[key])
             else:
+                # calculate P-value from CDF
                 pVal = keyDistr.cdf(self._qualdata[key])
 
             logging.debug("pVal for {task} is {p:.5f}".format(task=key, p=pVal))
@@ -446,114 +444,54 @@ def TalkPageGenerator(pages):
         yield page.toggleTalkPage()
 
 
-# -----------------------------------------------------------------
-# MODIFIED FUNCTION
-# -----------------------------------------------------------------
 def RatingGenerator(pages, step=50):
     """
-    Generate pages with assessment ratings loaded via API.
-
-    This generator batches API requests for talk page 'pageprops'.
-
-    :param pages: An iterable of article Page objects.
-    :param step: How many talk pages to query in a single API call.
+    Generate pages with assessment ratings.
     """
 
-    # Create a mapping of talk page titles to article Page objects
-    talk_page_map = {}
-    talk_page_list = []
+    # Preload talk page contents in bulk to speed up processing
+    # Note: since pywikibot's PreloadingGenerator doesn't guarantee
+    #       order, we'll have to exhaust it and map title to talkpage.
+    tp_map = {}
+    for talkpage in PreloadingGenerator(TalkPageGenerator(pages), step=step):
+        tp_map[talkpage.title(withNamespace=False)] = talkpage
 
-    # We must consume the 'pages' generator to create our map
-    pages_list = list(pages)
-
-    for page in pages_list:
+    # iterate and set the rating
+    for page in pages:
         try:
-            talk_page = page.toggleTalkPage()
-            talk_page_map[talk_page.title()] = page
-            talk_page_list.append(talk_page)
+            talkpage = tp_map[page.title()]
+            page._rating = page.get_assessment(talkpage.get())
+        except KeyError:
+            page._rating = "na"
         except pywikibot.exceptions.NoPageError:
-            page.set_rating("na")  # Article has no talk page
-
-    if not talk_page_list:
-        logging.debug("RatingGenerator: No talk pages to process.")
-        for page in pages_list:
-            yield page  # Yield pages with 'na' rating
-        return
-
-    # Use PropertyGenerator to batch-load pageprops for the talk pages
-    # We iterate over the talk_page_list in batches
-    for i in range(0, len(talk_page_list), step):
-        batch = talk_page_list[i : i + step]
-
-        prop_gen = api.PropertyGenerator("pageprops", site=batch[0].site)
-        prop_gen.set_maximum_items(-1)  # Do not limit rvlimit
-        prop_gen.request["titles"] = [tp.title() for tp in batch]
-
-        logging.debug(
-            f"RatingGenerator: Retrieving pageprops for {len(batch)} talk pages."
-        )
-
-        # This loop iterates through API batch responses
-        for tp_data in prop_gen:
-            try:
-                title = tp_data["title"]
-                if title not in talk_page_map:
-                    continue
-
-                article_page = talk_page_map[title]
-
-                # Page is missing, a redirect, or invalid
-                if (
-                    "missing" in tp_data
-                    or "invalid" in tp_data
-                    or "redirect" in tp_data
-                ):
-                    article_page.set_rating("na")
-                    continue
-
-                props = tp_data.get("pageprops", {})
-                rating = "na"  # Default
-
-                if "wgPageAssessmentClass" in props:
-                    api_rating = props["wgPageAssessmentClass"].lower()
-                    if api_rating in article_page._wp10_scale:
-                        rating = api_rating
-                    # Add any other needed mappings here
-
-                article_page.set_rating(rating)
-
-                # Also update the talk_page object in pywikibot's cache
-                # This makes tp.pageprops available later without a re-fetch
-                tp = talk_page_map[title].toggleTalkPage()
-                api.update_page(tp, tp_data)
-
-            except KeyError:
-                logging.warning(f"RatingGenerator: API response missing 'title' key.")
-
-    # Now yield the original page objects, which have their ratings set
-    for page in pages_list:
-        if page._rating is None:
-            # This can happen if the API request failed
-            logging.debug(
-                f"RatingGenerator: No rating found for {page.title()}, setting 'na'."
-            )
-            page.set_rating("na")
+            page._rating = "na"
+        except pywikibot.exceptions.IsRedirectPageError:
+            page._rating = "na"
         yield page
 
 
 def PageRevIdGenerator(site, pagelist, step=50):
     """
     Generate page objects with their most recent revision ID.
+
+    This generator is a modified version of `preloadpages` in pywikibot.site.
+
+    :param site: site we're requesting page IDs from
+    :param pagelist: an iterable that returns Page objects
+    :param step: how many Pages to query at a time
+    :type step: int
     """
     for sublist in backports.batched(pagelist, step):
         pageids = [
             str(p._pageid) for p in sublist if hasattr(p, "_pageid") and p._pageid > 0
         ]
+        # cache = dict((p.title(withSection=False), p) for p in sublist)
         cache = dict((p.title(), p) for p in sublist)
         props = "revisions|info|categoryinfo"
         rvgen = api.PropertyGenerator(props, site=site)
-        rvgen.set_maximum_items(-1)
+        rvgen.set_maximum_items(-1)  # suppress use of "rvlimit" parameter
         if len(pageids) == len(sublist):
+            # only use pageids if all pages have them
             rvgen.request["pageids"] = "|".join(pageids)
         else:
             rvgen.request["titles"] = "|".join(list(cache.keys()))
@@ -564,8 +502,15 @@ def PageRevIdGenerator(site, pagelist, step=50):
             logging.debug("Preloading {0}".format(pagedata))
             try:
                 if pagedata["title"] not in cache:
+                    #                   API always returns a "normalized" title which is
+                    #                   usually the same as the canonical form returned by
+                    #                   page.title(), but sometimes not (e.g.,
+                    #                   gender-specific localizations of "User" namespace).
+                    #                   This checks to see if there is a normalized title in
+                    #                   the response that corresponds to the canonical form
+                    #                   used in the query.
                     for key in cache:
-                        if site.sametitle(key, pageda["title"]):
+                        if site.sametitle(key, pagedata["title"]):
                             cache[pagedata["title"]] = cache[key]
                             break
                     else:
@@ -582,30 +527,105 @@ def PageRevIdGenerator(site, pagelist, step=50):
             page = cache[pagedata["title"]]
             api.update_page(page, pagedata)
 
+        # Since we're not loading content and the pages are already in
+        # memory, let's yield the pages in the same order as they were
+        # received in case that's important.
         for page in sublist:
             yield page
 
 
+# Updated to use ORES v3
 def PredictionGenerator(site, pages, step=50):
     """
-    Generate pages with quality predictions using Lift Wing.
+    Generate pages with quality predictions using ORES v3.
+    :param site: site of the pages we are predicting for
+    :type pages: pywikibot.Site
+    :param pages: List of pages we are predicting.
+    :type pages: list of pywikibot.Page
+    :param step: Number of pages to get predictions for at a time,
+                 maximum is 50.
+    :type step: int
     """
+    if step > 50:
+        step = 50
 
-    for page in PageRevIdGenerator(site, pages, step=step):
-        try:
-            page.get_prediction()
-        except Exception as e:
-            logging.warning(
-                f"Failed to get Lift Wing prediction for {page.title()}: {e}"
+    langcode = "{lang}wiki".format(lang=site.lang)
+
+    # ORES v3 base URL structure:
+    # https://ores.wikimedia.org/v3/scores/{wiki}/{revids}/{models}
+
+    for page_group in backports.batched(pages, step):
+        revid_page_map = {}  # rev id (str) -> page object
+        # Load most recent revision IDs
+        for page in PageRevIdGenerator(site, page_group):
+            revid_page_map[str(page.latest_revision_id)] = page
+
+        # Construct ORES v3 URL
+        revids = "|".join([str(page.latest_revision_id) for page in page_group])
+        url = "{ores_url}v3/scores/{langcode}/{revids}/wp10".format(
+            ores_url=config.ORES_url, langcode=langcode, revids=revids
+        )
+
+        logging.debug(
+            "Requesting predictions for {n} pages from ORES v3".format(
+                n=len(revid_page_map)
             )
+        )
 
-        yield page
+        num_attempts = 0
+        while num_attempts < config.max_url_attempts:
+            r = requests.get(
+                url,
+                headers={
+                    "User-Agent": config.http_user_agent,
+                    "From": config.http_from,
+                },
+            )
+            num_attempts += 1
+
+            if r.status_code == 200:
+                try:
+                    response = r.json()
+                    # ORES v3 response structure is different
+                    scores = response.get("scores", {}).get(langcode, {})
+
+                    for revid, score_data in scores.items():
+                        wp10_score = score_data.get("wp10", {})
+                        if "error" in wp10_score:
+                            logging.warning(
+                                f"Error in ORES prediction for revision {revid}: {wp10_score['error']}"
+                            )
+                            continue
+
+                        prediction = wp10_score.get("score", {}).get("prediction")
+                        if prediction and revid in revid_page_map:
+                            revid_page_map[revid].set_prediction(prediction.lower())
+                    break
+
+                except ValueError:
+                    logging.warning("Unable to decode ORES response as JSON")
+                except KeyError as e:
+                    logging.warning(f"ORES response keys not as expected: {str(e)}")
+
+            # Wait before retrying
+            # sleep(500)
+            sleep(1)
+
+        for page in page_group:
+            yield page
 
 
 def PredictionGenerator_QAF(pages, step=50):
     """
     Generate pages with quality predictions using quality article features api.
     """
+
     for page in pages:
         page.get_ar_prediction()
         yield page
+    # if step > 50:
+    #     step = 50
+    #
+    # for page_group in backports.batched(pages, step):
+    #     for page in page_group:
+    #         yield page.get_ar_prediction()
