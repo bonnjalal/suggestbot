@@ -22,3 +22,4 @@ export NLTK_DATA=$scriptdir/nltk_data
 # Load SuggestBot's own virtual environment
 # source /export/scratch/morten/sbotenv/bin/activate
 # export PYTHON_EXECUTABLE=$HOME/venv/suggestbot/bin/python; # [#TEMP]
+export PYTHON_EXECUTABLE=$HOME/Workdata/المستندات/suggestbot/venv/bin/python;

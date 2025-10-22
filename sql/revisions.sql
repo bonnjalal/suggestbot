@@ -26,3 +26,4 @@ CREATE TABLE svwiki_revisions LIKE enwiki_revisions;
 CREATE TABLE ptwiki_revisions LIKE enwiki_revisions;
 CREATE TABLE ruwiki_revisions LIKE enwiki_revisions;
 CREATE TABLE fawiki_revisions LIKE enwiki_revisions;
+CREATE TABLE arwiki_revisions LIKE enwiki_revisions;

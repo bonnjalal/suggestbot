@@ -8,3 +8,4 @@ nltk
 scipy
 mysqlclient
 mwtypes
+more_itertools

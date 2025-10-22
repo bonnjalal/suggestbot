@@ -20,8 +20,11 @@ import xmlrpc.client
 
 
 def main():
-    test_lang = "ar"
-    test_user = "Bonnjalal00"
+    # test_lang = "ar"
+    # test_user = "Bonnjalal00"
+
+    test_lang = "en"
+    test_user = "Nettrom"
     test_n = 500
 
     # Get my edits
