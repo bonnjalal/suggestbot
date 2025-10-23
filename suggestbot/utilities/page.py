@@ -362,13 +362,38 @@ class Page(pywikibot.Page):
 
     def get_prediction(self):
         """
-        Retrieve the predicted assessment rating from Lift Wing using the
-        current revision of the article.
+        Retrieve the predicted assessment rating using the appropriate API
+        (Lift Wing or QAF) based on the site language.
+        Caches the result in self._prediction.
         """
-        if not self._prediction:
+        # First, check if the prediction is already cached
+        if self._prediction is not None:
+            # print(f"Returning cached prediction: {self._prediction}") # Optional debug print
+            return self._prediction
+
+        if self.site.lang == "ar":
+            self._prediction = self._get_QAF_pred()
+        else:
             self._prediction = self._get_liftwing_pred()
 
         return self._prediction
+
+    # def get_prediction(self):
+    #     """
+    #     Retrieve the predicted assessment rating from Lift Wing using the
+    #     current revision of the article.
+    #     """
+    #
+    #     print(" The site land is: " + self.site.lang)
+    #     if self.site.lang == "ar":
+    #         print(" The site is ar")
+    #         self.get_ar_prediction()
+    #         return
+    #
+    #     if not self._prediction:
+    #         self._prediction = self._get_liftwing_pred()
+    #
+    #     return self._prediction
 
     def get_ar_prediction(self):
         """

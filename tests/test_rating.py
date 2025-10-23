@@ -1,12 +1,20 @@
 # Test get_views() method using the pageview API
 import logging
-logging.basicConfig(level=logging.DEBUG)
+import sys
+import os
+
+# Add the parent directory to the Python path
+# Use this line only if your want to test the script directly from the current path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pywikibot
 from suggestbot.utilities.page import Page
 
-site = pywikibot.Site('en')
+logging.basicConfig(level=logging.DEBUG)
 
+
+site = pywikibot.Site("ar")
+# Tests for English Wikipedia
 # page = Page(site, 'Barack Obama')
 # print("{0} has a rating of {1}".format(page.title(), page.get_rating()))
 # page = Page(site, 'Ara Parseghian')
@@ -57,5 +65,9 @@ site = pywikibot.Site('en')
 # print("{0} has a rating of {1}".format(page.title(), page.get_rating()))
 
 # This one should be GA but was rated Stub, why?
-page = Page(site, "George Washington")
-print("{0} has a rating of {1}".format(page.title(), page.get_rating()))
+# page = Page(site, "George Washington")
+# print("{0} has a rating of {1}".format(page.title(), page.get_rating()))
+
+
+page = Page(site, "إيلون ماسك")
+print("{0} has a prediction of {1}".format(page.title(), page.get_prediction()))
