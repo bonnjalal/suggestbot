@@ -458,8 +458,8 @@ def RatingGenerator(pages, step=50):
 
     # Preload talk page contents in bulk to speed up processing
     tp_map = {}
-    for talkpage in PreloadingGenerator(TalkPageGenerator(pages), step=step):
-        tp_map[talkpage.title(withNamespace=False)] = talkpage
+    for talkpage in PreloadingGenerator(TalkPageGenerator(pages), groupsize=step):
+        tp_map[talkpage.title(with_ns=False)] = talkpage
 
     for page in pages:
         try:
@@ -521,17 +521,33 @@ def PageRevIdGenerator(site, pagelist, step=50):
 
 def PredictionGenerator(site, pages, step=50):
     """
-    Generate pages with quality predictions using Lift Wing.
+    Generate pages with quality predictions using the appropriate API
+    (Lift Wing or QAF) based on the site language.
+
+    This function iterates through pages, loading their revision IDs in
+    batches (using PageRevIdGenerator) and then requests a prediction
+    for each page individually.
+
+    :param site: site of the pages we are predicting for
+    :type site: pywikibot.Site
+    :param pages: List of pages we are predicting.
+    :type pages: list of suggestbot.utilities.page.Page
+    :param step: Number of pages to load revision IDs for at a time.
+    :type step: int
     """
 
+    # PageRevIdGenerator loads revision IDs in batches (using 'step')
+    # and yields Page objects one by one.
     for page in PageRevIdGenerator(site, pages, step=step):
         try:
-            page.get_prediction()
+            if site.lang == "ar":
+                page.get_ar_prediction()
+            else:
+                page.get_prediction()
         except Exception as e:
             logging.warning(
-                f"Failed to get Lift Wing prediction for {page.title()}: {e}"
+                f"Failed to get prediction for {page.title()} on {site.lang}wiki: {e}"
             )
-
         yield page
 
 
