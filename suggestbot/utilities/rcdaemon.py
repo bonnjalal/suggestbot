@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8  -*-
-'''
+"""
 Daemon that polls recentchanges for our configured Wikipedias at regular
 intervals and updates the edit database with info.
-'''
+"""
 
 import re
 import os
@@ -22,11 +22,12 @@ from suggestbot import config
 from suggestbot import db
 import suggestbot.utilities.reverts as sur
 
+
 class RecentChangesDaemon:
     def __init__(self):
-        '''
+        """
         Instantiate a RecentChangesDaemon
-        '''
+        """
 
         self.db = db.SuggestBotDatabase()
 
@@ -40,17 +41,17 @@ class RecentChangesDaemon:
         self.dailyRunning = False
 
     def handleSignal(self, signum, stack):
-        '''
+        """
         Handle incoming signals, specifically SIGUSR1, which we'll use
         to quit gracefully.
-        '''
+        """
         self.shutdown = True
-        return()
+        return ()
 
     def run(self):
-        '''
+        """
         Run as a daemon for as long as possible.
-        '''
+        """
 
         # Query to get the most recent edit in a given revision table...
         most_recent_query = """SELECT
@@ -69,7 +70,7 @@ class RecentChangesDaemon:
             # connect to the database
             if not self.db.connect():
                 logging.error("unable to connect to the database")
-                return()
+                return ()
 
             (db_conn, db_cursor) = self.db.getConnection()
 
@@ -77,52 +78,56 @@ class RecentChangesDaemon:
             for lang in config.lang_codes.keys():
                 logging.info("checking {}wiki".format(lang))
 
-                db_cursor.execute(most_recent_query.format(
-                    config.revision_table[lang]))
+                db_cursor.execute(most_recent_query.format(config.revision_table[lang]))
                 row = db_cursor.fetchone()
-                db_cursor.fetchall() # flush cursor...
+                db_cursor.fetchall()  # flush cursor...
                 if not row:
-                    logging.error("unable to get most recent edit for {}wiki".format(lang))
+                    logging.error(
+                        "unable to get most recent edit for {}wiki".format(lang)
+                    )
                     continue
-                
-                logging.info("most recent edit was {}".format(
-                    row['mostrecent']))
-                
-                # check if enough time has passed
-                timelapse = datetime.datetime.utcnow() - row['mostrecent']
-                logging.info("time lapsed since most recent edit: {} days, {} seconds".format(timelapse.days, timelapse.seconds))
 
-                if (timelapse.days > 0) \
-                   or (timelapse.seconds >= config.rc_delay):
+                logging.info("most recent edit was {}".format(row["mostrecent"]))
+
+                # check if enough time has passed
+                timelapse = datetime.datetime.utcnow() - row["mostrecent"]
+                logging.info(
+                    "time lapsed since most recent edit: {} days, {} seconds".format(
+                        timelapse.days, timelapse.seconds
+                    )
+                )
+
+                if (timelapse.days > 0) or (timelapse.seconds >= config.rc_delay):
                     # Convert 'then' to a pywikibot.Timestamp object...
                     then = pywikibot.Timestamp.fromtimestampformat(
-                        then.strftime("%Y%m%d%H%M%S"))
+                        then.strftime("%Y%m%d%H%M%S")
+                    )
                     self.get_revisions(lang, fromTime=then)
 
             self.db.disconnect()
             # Ok, now sleep for a while...
             logging.info("sleeping for 300 seconds...")
             sleep(300)
-            
-        return()
+
+        return ()
 
     def update(self, lang):
-        '''
+        """
         Fetch recent changes for a single language.
 
         :param lang: language code of the Wikipedia to fetch data from
         :type lang: str
-        '''
+        """
 
         # Query to get the most recent edit in a given revision table...
         most_recent_query = """SELECT
                                MAX(rev_timestamp) AS mostrecent
                                FROM {}"""
-        
+
         # connect to the database
         if not self.db.connect():
             logging.error("unable to connect to the database")
-            return()
+            return ()
 
         (db_conn, db_cursor) = self.db.getConnection()
 
@@ -130,37 +135,43 @@ class RecentChangesDaemon:
 
         db_cursor.execute(most_recent_query.format(config.revision_table[lang]))
         row = db_cursor.fetchone()
-        db_cursor.fetchall() # flush cursor...
+        db_cursor.fetchall()  # flush cursor...
         if not row:
-            logging.warning("unable to get most recent edit for {}wiki".format(
-                lang))
-            return()
+            logging.warning("unable to get most recent edit for {}wiki".format(lang))
+            return ()
 
-        logging.info("most recent edit was {0}".format(row['mostrecent']))
+        logging.info("most recent edit was {0}".format(row["mostrecent"]))
 
         # check if enough time has passed
         # since the most recent edit was made...
         now = datetime.datetime.utcnow()
-        then = row['mostrecent']
+        then = row["mostrecent"]
         if then is None:
-            logging.info('no revisions in table, fetching everything from recentchanges')
+            logging.info(
+                "no revisions in table, fetching everything from recentchanges"
+            )
             self.get_revisions(lang)
         else:
             timelapse = now - then
-            logging.info(u"time lapsed since most recent edit: {0} days, {1} seconds".format(timelapse.days, timelapse.seconds))
-            if timelapse.days > 0 \
-                   or timelapse.seconds >= config.rc_delay:
+            logging.info(
+                "time lapsed since most recent edit: {0} days, {1} seconds".format(
+                    timelapse.days, timelapse.seconds
+                )
+            )
+            if timelapse.days > 0 or timelapse.seconds >= config.rc_delay:
                 # Convert 'then' to a pywikibot.Timestamp object...
-                then = pywikibot.Timestamp.fromtimestampformat(then.strftime("%Y%m%d%H%M%S"))
+                then = pywikibot.Timestamp.fromtimestampformat(
+                    then.strftime("%Y%m%d%H%M%S")
+                )
                 self.get_revisions(lang, fromTime=then)
 
         self.db.disconnect()
-        
+
         # ok, done
-        return()
+        return ()
 
     def get_revisions(self, lang, fromTime=None, toTime=None):
-        '''
+        """
         Make a request to the API on the given language Wikipedia to get
         recent changes from one timestamp to another timestamp, or from
         a timestamp to whatever is last available.
@@ -173,7 +184,7 @@ class RecentChangesDaemon:
 
         :param toTime: timestamp to end fetching recentchanges
         :type toTime: pywikibot.Timestamp
-        '''
+        """
 
         logging.info("fetching recent changes for {}wiki".format(lang))
 
@@ -182,7 +193,7 @@ class RecentChangesDaemon:
 
         # check if we have apihighlimits and set step as necessary
         step_limit = 500
-        if site.has_right('apihighlimits'):
+        if site.has_right("apihighlimits"):
             step_limit = 5000
 
         # Create our recent changes generator that only grabs edits
@@ -193,37 +204,46 @@ class RecentChangesDaemon:
         #       recommend the article it redirects to, but that's currently
         #       too much work to keep track of)
         # NOTE: as you can see we also discard anonymous users.
-        rc_gen = site.recentchanges(start=fromTime,
-                                    end=toTime,
-                                    step=step_limit,
-                                    reverse=True,
-                                    namespaces=[0],
-                                    showAnon=False,
-                                    showBot=False,
-                                    showRedirects=False,
-                                    changetype="edit|new")
+        rc_gen = site.recentchanges(
+            start=fromTime,
+            end=toTime,
+            # step=step_limit,
+            total=step_limit,
+            reverse=True,
+            namespaces=[0],
+            # showAnon=False,
+            # showBot=False,
+            # showRedirects=False,
+            changetype="edit|new",
+        )
         self.update_database(lang, rc_gen)
-        return()
+        return ()
 
     def update_database(self, lang, generator):
-        '''
+        """
         Update the database for the given language with the recent changes info
         returned by the given generator.
 
         :param lang: Wikipedia language edition we're updating
         :type lang: str
-        
+
         :param generator: Recent changes generator with data we want to store
         :type generator: pywikibot.api.ListGenerator
-        '''
+        """
 
         if not lang in config.lang_codes.keys():
-            logging.error("parameter 'lang' set to '{}', which is not found in the configuration".format(lang))
-            return()
+            logging.error(
+                "parameter 'lang' set to '{}', which is not found in the configuration".format(
+                    lang
+                )
+            )
+            return ()
 
         if not lang in sur.REVERT_RE.keys():
-            logging.error("language '{}' not configured in the reverts library".format(lang))
-            return()
+            logging.error(
+                "language '{}' not configured in the reverts library".format(lang)
+            )
+            return ()
 
         # NOTE: this uses the MySQL extension to SQL that adds
         # "ON DUPLICATE KEY UPDATE ..." to update the values if
@@ -241,13 +261,13 @@ class RecentChangesDaemon:
                           rev_delta_length=%(delta)s,
                           rev_is_identical=%(identical)s,
                           rev_comment_is_revert=%(revert)s,
-                          rev_is_minor=%(minor)s""".format(
-                              config.revision_table[lang])
+                          rev_is_minor=%(minor)s""".format(config.revision_table[lang])
 
         # Query to delete revisions that are older than a given timestamp
         delete_query = """DELETE FROM {}
                           WHERE rev_timestamp < %(timestamp)s""".format(
-                              config.revision_table[lang])
+            config.revision_table[lang]
+        )
 
         # We should already be connected to the database...
         (db_conn, db_cursor) = self.db.getConnection()
@@ -268,14 +288,14 @@ class RecentChangesDaemon:
         # The key u'minor' exists if it's a minor edit.
 
         # Regular expression used to identify reverts
-        revert_re  = sur.REVERT_RE[lang]
+        revert_re = sur.REVERT_RE[lang]
 
         # list of revisions, pushed to executemany()
         revisions = []
 
         ## counter to trigger commits
         num_inserted_revisions = 0
-        
+
         for revdata in generator:
             is_revert = 0
             is_minor = 1
@@ -286,61 +306,66 @@ class RecentChangesDaemon:
             # Check if we have a user, a revision ID, and an edit comment,
             # otherwise we'll skip this revision. (This info might be deleted
             # from revisions, e.g. due to abuse)
-            if revdata['revid'] is None \
-               or 'user' not in revdata \
-               or not revdata['user']:
-                logging.info(u"no rev ID or user info in revision {}".format(
-                    revdata['rcid']))
+            if revdata["revid"] is None or "user" not in revdata or not revdata["user"]:
+                logging.info(
+                    "no rev ID or user info in revision {}".format(revdata["rcid"])
+                )
                 continue
 
             ## Comments might also be deleted
-            if 'comment' not in revdata:
-                logging.info("no comment info in revision {}".format(
-                    revdata['rcid']))
-                revdata['comment'] = u''
-               
+            if "comment" not in revdata:
+                logging.info("no comment info in revision {}".format(revdata["rcid"]))
+                revdata["comment"] = ""
+
             # Parse the timestamp
             try:
-                timestamp = pywikibot.Timestamp.fromISOformat(
-                    revdata['timestamp'])
+                timestamp = pywikibot.Timestamp.fromISOformat(revdata["timestamp"])
             except ValueError:
-                logging.warning('unable to parse timestamp {}'.format(
-                    revdata['timestamp']))
+                logging.warning(
+                    "unable to parse timestamp {}".format(revdata["timestamp"])
+                )
                 timestamp = None
 
             # check if it's a revert
-            if re.search(revert_re, revdata['comment'], re.VERBOSE):
+            if re.search(revert_re, revdata["comment"], re.VERBOSE):
                 is_revert = 1
 
             # if English we'll also check VLOOSE and VSTRICT
-            if lang == u'en' and \
-               (re.search(sur.VSTRICT_RE, revdata['comment'], re.VERBOSE) \
-                or re.search(sur.VLOOSE_RE, revdata['comment'], re.VERBOSE)):
+            if lang == "en" and (
+                re.search(sur.VSTRICT_RE, revdata["comment"], re.VERBOSE)
+                or re.search(sur.VLOOSE_RE, revdata["comment"], re.VERBOSE)
+            ):
                 is_revert = 1
 
             # check if it's a minor edit
-            if 'minor' in revdata:
+            if "minor" in revdata:
                 is_minor = 1
 
             # push revision data for later updating.
             try:
-                db_cursor.execute(insert_query,
-                                  {'revid': revdata['revid'],
-                                   'title': revdata['title'].encode('utf-8'),
-                                   'username': revdata['user'].encode('utf-8'),
-                                   'timestamp': timestamp,
-                                   'length': length,
-                                   'delta': delta_length,
-                                   'identical': is_identical,
-                                   'revert': is_revert,
-                                   'minor': is_minor})
+                db_cursor.execute(
+                    insert_query,
+                    {
+                        "revid": revdata["revid"],
+                        "title": revdata["title"].encode("utf-8"),
+                        "username": revdata["user"].encode("utf-8"),
+                        # "timestamp": timestamp,
+                        "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                        if timestamp
+                        else None,
+                        "length": length,
+                        "delta": delta_length,
+                        "identical": is_identical,
+                        "revert": is_revert,
+                        "minor": is_minor,
+                    },
+                )
                 num_inserted_revisions += 1
             except MySQLdb.Error as e:
-                logging.error('failed to insert revision data')
-                logging.error('MySQL Error: {} : {}'.format(e.args[0],
-                                                            e.args[1]))
+                logging.error("failed to insert revision data")
+                logging.error("MySQL Error: {} : {}".format(e.args[0], e.args[1]))
             if num_inserted_revisions == 500:
-                logging.info('inserted 500 revisions, committing')
+                logging.info("inserted 500 revisions, committing")
                 db_conn.commit()
                 num_inserted_revisions = 0
 
@@ -348,10 +373,11 @@ class RecentChangesDaemon:
         logging.info("done inserting revisions, deleting old revisions")
 
         # Delete old revisions, a simple now - RC_KEEP days calculation...
-        cutoff = datetime.datetime.utcnow() \
-                 - datetime.timedelta(days=config.rc_keep[lang])
+        cutoff = datetime.datetime.utcnow() - datetime.timedelta(
+            days=config.rc_keep[lang]
+        )
         try:
-            db_cursor.execute(delete_query, {'timestamp': cutoff})
+            db_cursor.execute(delete_query, {"timestamp": cutoff})
             db_conn.commit()
         except MySQLdb.Error as e:
             logging.error("unable to delete revisions from database")
@@ -360,4 +386,4 @@ class RecentChangesDaemon:
         logging.info("info: done deleting old revisions")
 
         # ok, done
-        return()
+        return ()

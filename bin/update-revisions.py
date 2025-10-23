@@ -21,25 +21,36 @@ Free Software Foundation, Inc., 51 Franklin St, Fifth Floor,
 Boston, MA  02110-1301, USA.
 """
 
+import sys
+import os
+
+# Add the parent directory to the Python path
+# Use this line only if your want to test the script directly from the current path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import argparse
 import logging
 
 from suggestbot.utilities.rcdaemon import RecentChangesDaemon
 
+
 def main():
     # Parse CLI options
     import argparse
+
     cli_parser = argparse.ArgumentParser(
         description="Script to update our revision table for a specific language"
-        )
+    )
 
     # Add verbosity option
-    cli_parser.add_argument('-v', '--verbose', action='store_true',
-                            help='Be more verbose')
-    
+    cli_parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Be more verbose"
+    )
+
     # Add required language parameter
-    cli_parser.add_argument('lang',
-                            help='language code of the Wikipedia we are processing')
+    cli_parser.add_argument(
+        "lang", help="language code of the Wikipedia we are processing"
+    )
 
     args = cli_parser.parse_args()
     if args.verbose:
@@ -47,7 +58,8 @@ def main():
 
     daemon = RecentChangesDaemon()
     daemon.update(args.lang)
-    return()
+    return ()
+
 
 if __name__ == "__main__":
     main()
